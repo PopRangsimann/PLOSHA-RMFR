@@ -108,6 +108,30 @@ cryptographic material.
 
 The main contributions of this paper are summarized as follows:
 
+- We propose **Predictive Load-Sharing Hierarchical Aggregation
+  (PLOSHA)**, which dynamically adapts aggregation granularity according
+  to predicted capacity, failure exposure, and reliability conditions.
+  By combining adaptive micro-slot partitioning with hierarchical
+  encrypted aggregation, PLOSHA reduces aggregation-loss exposure while
+  preserving privacy-preserving processing efficiency.
+
+- We design a Risk-Aware Multi-Layer Fault Recovery (RMFR) model that
+  integrates predictive delegation, localized micro-slot recovery, and
+  reliability-aware failover within a unified recovery-escalation model,
+  enabling efficient fault-tolerant aggregation with reduced recovery
+  overhead.
+
+- We develop a TEE-protected secure delegation architecture that
+  supports confidential workload migration through enclave-confined
+  state transfer and temporary credential provisioning, preserving
+  aggregation continuity without exposing sensitive data or
+  cryptographic material.
+
+- We introduce an Adaptive Feedback Learning and Threshold Optimization
+  (AFLTO) mechanism that continuously optimizes aggregation and recovery
+  thresholds according to aggregation quality, recovery urgency, and
+  reliability conditions, enabling closed-loop self-adaptation.
+
 # Related Work
 
 ::: table*
@@ -200,8 +224,7 @@ recovery latency and require maintaining additional execution-state
 information.
 
 Recent research explores fault-aware scheduling and adaptive offloading
-mechanisms for edge environments. Examples include fault-tolerant task
-offloading using reinforcement learning [@ref43], fault-aware workflow
+mechanisms for edge environments. Examples include fault-aware workflow
 scheduling under fluctuating cloud resources [@ref37], and
 preference-aware fault-tolerant embedding in serverless edge
 infrastructures [@ref40]. EdgeHydra [@ref42] further employs erasure
@@ -285,10 +308,8 @@ minimizing aggregation-loss exposure.
 ## System Model {#sec:arch}
 
 <figure id="fig:workflow" data-latex-placement="t">
-<span class="image placeholder"
-data-original-image-src="flow_diagram.png" data-original-image-title=""
-width="\linewidth"></span>
-<figcaption>PLOSHA-RMFR System Model.</figcaption>
+<img src="./System Model.png" />
+<figcaption>PLOSHA-RMFR System Model</figcaption>
 </figure>
 
 Fig. [1](#fig:workflow){reference-type="ref" reference="fig:workflow"}
@@ -360,19 +381,19 @@ cannot be extracted by adversaries.
 
 The adversary may attempt to:
 
-1.  infer sensor readings from intercepted communications;
+1.  Infer sensor readings from intercepted communications
 
-2.  compromise a fog node and access aggregation data;
+2.  Compromise a fog node and access aggregation data
 
-3.  exploit overload conditions to degrade service availability;
+3.  Exploit overload conditions to degrade service availability
 
-4.  trigger repeated recovery operations to increase system overhead;
+4.  Trigger repeated recovery operations to increase system overhead
 
-5.  manipulate workload-distribution decisions through falsified status
+5.  Manipulate workload-distribution decisions through falsified status
     information;
 
-6.  disrupt aggregation by causing node failures during active
-    aggregation epochs.
+6.  Disrupt aggregation by causing node failures during active
+    aggregation epochs
 
 PLOSHA-RMFR does not assume trusted communication channels between
 sensors, fog nodes, and the cloud. Standard cryptographic assumptions
@@ -444,7 +465,7 @@ This phase establishes the trust relationships, cryptographic
 credentials, and operational states required by the PLOSHA-RMFR
 framework.
 
-**Step 1: Entity Registration and Attestation.** Let
+**Step 1: Entity Registration and Attestation** Let
 $\mathcal{S}={S_1,S_2,\ldots,S_m}$ and
 $\mathcal{F}={F_1,F_2,\ldots,F_n}$ denote the sets of IIoT sensors and
 fog nodes, respectively. Before participating in the framework, each fog
@@ -454,7 +475,7 @@ $Attest(F_i)=1$. Successful attestation establishes a Trusted TEE, which
 serves as the secure execution platform for aggregation, delegation, and
 recovery operations.
 
-**Step 2: Sensor Association and Key Provisioning.** The KRM initializes
+**Step 2: Sensor Association and Key Provisioning** The KRM initializes
 a sensor-to-fog assignment function
 $\Gamma:\mathcal{S}\rightarrow\mathcal{F}$, where $\Gamma(S_j)=F_i$
 indicates that sensor $S_j$ is assigned to fog node $F_i$. For each fog
@@ -465,7 +486,7 @@ independent cryptographic domain, thereby localizing the impact of key
 compromise to a single fog region and preventing system-wide key
 exposure.
 
-**Step 3: Homomorphic Aggregation Setup.** To support privacy-preserving
+**Step 3: Homomorphic Aggregation Setup** To support privacy-preserving
 aggregation, the KRM generates a Paillier key pair $(pk_P,sk_P)$ using
 security parameter $\lambda$. The public key $pk_P$ is provisioned to
 all attested fog enclaves to enable homomorphic aggregation, whereas the
@@ -473,22 +494,23 @@ private key $sk_P$ remains sealed within the KRM and is never disclosed
 to fog nodes. As a result, fog nodes can aggregate encrypted sensor
 readings without obtaining decryption capability.
 
-**Step 4: Reliability and Operational-State Initialization.**
+**Step 4: Reliability and Operational-State Initialization**
 
 For each fog node $F_i$, the KRM initializes the reliability score as
-
-\[ Rel_i(0)=1, \]
-
-indicating a fully operational state at deployment time. The
-corresponding initial operational state is represented by
-
-\[ State_i(0)
-
-::: bmatrix
-W_i(0) Q_i(0) L_i(0) Rel_i(0)
-:::
-
-. \]
+$$\begin{equation}
+Rel_i(0)=1
+\end{equation}$$ indicating a fully operational state at deployment
+time. The corresponding initial operational state is represented by
+$$\begin{equation}
+State_i(0)
+=
+\begin{bmatrix}
+W_i(0) \\
+Q_i(0) \\
+L_i(0) \\
+Rel_i(0)
+\end{bmatrix}
+\end{equation}$$
 
 Here, $W_i(0)$, $Q_i(0)$, and $L_i(0)$ denote the initial workload,
 queue utilization, and communication latency, respectively, while
@@ -497,18 +519,20 @@ establish the baseline operational profile of fog node $F_i$ and serve
 as the reference state for predictive estimation, capacity evaluation,
 and risk analysis in subsequent phases.
 
-**Step 5: Initialization Output.** The initialization procedure outputs
-the system state
-
-$$\mathcal{O}_{init}
+**Step 5: Initialization Output** The initialization procedure outputs
+the system state $$\begin{equation}
+\begin{aligned}
+\mathcal{O}_{init}
 =
-\left\{
-pk_P,\;
+\Bigl\{
+& pk_P,\;
 \Gamma,\;
 \{k_i\}_{i=1}^{n},\;
-\{Rel_i(0)\}_{i=1}^{n},\;
-\{State_i(0)\}_{i=1}^{n}
-\right\}$$ which forms the operational foundation for predictive
+\{Rel_i(0)\}_{i=1}^{n}, \\
+& \{State_i(0)\}_{i=1}^{n}
+\Bigr\}
+\end{aligned}
+\end{equation}$$ which forms the operational foundation for predictive
 workload estimation, adaptive hierarchical aggregation, and risk-aware
 fault recovery throughout the PLOSHA-RMFR framework.
 
@@ -523,125 +547,164 @@ Exponential Weighted Moving Average (EWMA) predictor. The resulting
 prediction enables proactive aggregation adaptation and early fault
 mitigation before service quality deteriorates.
 
-**Step 1: Runtime State Collection.**
+**Step 1: Runtime State Collection**
 
 During each aggregation epoch $\Delta$, every fog node $F_i$
 continuously monitors its operational condition and periodically reports
 a runtime state vector to the Key and Reliability Management (KRM)
-module:
+module: $$\begin{equation}
+\mathbf{State}_i(t)
+=
+\begin{bmatrix}
+W_i(t)\\
+Q_i(t)\\
+L_i(t)\\
+Rel_i(t)
+\end{bmatrix}
+\end{equation}$$ Here, $W_i(t)$, $Q_i(t)$, $L_i(t)$, and $Rel_i(t)$
+denote the normalized workload, queue utilization, communication
+latency, and reliability score of fog node $F_i$, respectively. All
+state variables are normalized to the interval $[0,1]$.
 
-\[ State_i(t)
-
-::: bmatrix
-W_i(t) Q_i(t) L_i(t) Rel_i(t)
-:::
-
-. \]
-
-Here, $W_i(t)$, $Q_i(t)$, $L_i(t)$, and $Rel_i(t)$ denote the normalized
-workload, queue utilization, communication latency, and reliability
-score of fog node $F_i$, respectively. All state variables are
-normalized to the interval $[0,1]$.
-
-**Step 2: Future State Prediction.**
+**Step 2: Future State Prediction**
 
 To smooth short-term fluctuations while preserving responsiveness to
 dynamic operating conditions, PLOSHA-RMFR employs an EWMA predictor:
+$$\begin{equation}
+\widehat{State}_i(t+1)
+=
+\alpha State_i(t)
++
+(1-\alpha)\widehat{State}_i(t)
+\end{equation}$$ where $\alpha\in(0,1)$ denotes the smoothing
+coefficient.
 
-\[ \_i(t+1) State_i(t) + (1-)\_i(t), \]
-
-where $\alpha\in(0,1)$ denotes the smoothing coefficient.
-
-Consequently,
-
-\[ \_i(t+1)
-
-::: bmatrix
-\_i(t+1) \_i(t+1) \_i(t+1) \_i(t+1)
-:::
-
-. \]
+Consequently, $$\begin{equation}
+\widehat{State}_i(t+1)
+=
+\begin{bmatrix}
+\widehat{W}_i(t+1)\\
+\widehat{Q}_i(t+1)\\
+\widehat{L}_i(t+1)\\
+\widehat{Rel}_i(t+1)
+\end{bmatrix}
+\end{equation}$$
 
 The predicted state vector provides a short-term estimate of the future
 operating condition of fog node $F_i$.
 
-**Step 3: Effective Aggregation Capacity Estimation.**
+**Step 3: Effective Aggregation Capacity Estimation**
 
 Using the predicted state, PLOSHA-RMFR evaluates the future aggregation
-capability of fog node $F_i$ as
+capability of fog node $F_i$ as $$\begin{equation}
+\begin{aligned}
+Cap_i(t+1)
+=
+&\;
+\widehat{Rel}_i(t+1)
+\Bigl[
+1-
+\bigl(
+\omega_w\widehat{W}_i(t+1)
+\\
+&
++
+\omega_q\widehat{Q}_i(t+1)
++
+\omega_l\widehat{L}_i(t+1)
+\bigr)
+\Bigr]
+\end{aligned}
+\end{equation}$$
 
-\[ Cap_i(t+1) \_i(t+1) , \]
+subject to $$\begin{equation}
+\omega_w+\omega_q+\omega_l=1,
+\qquad
+\omega_w,\omega_q,\omega_l\in[0,1]
+\end{equation}$$
 
-subject to
-
-\[ \_w+\_q+\_l=1, \_w,\_q,\_l. \]
-
-Since all variables are normalized,
-
-\[ 0Cap_i(t+1). \]
+Since all variables are normalized, $$\begin{equation}
+0\le Cap_i(t+1)\le 1
+\end{equation}$$
 
 A larger value indicates greater available processing resources, lower
 congestion, and stronger operational stability.
 
-**Step 4: Failure Exposure Analysis.**
+**Step 4: Failure Exposure Analysis**
 
 To estimate the likelihood of aggregation disruption, PLOSHA-RMFR
-computes the failure exposure score
+computes the failure exposure score $$\begin{equation}
+FE_i(t)
+=
+\widehat{W}_i(t+1)
+\widehat{Q}_i(t+1)
+\Bigl(
+1-\widehat{Rel}_i(t+1)
+\Bigr)
+\end{equation}$$
 
-\[ FE_i(t) \_i(t+1) \_i(t+1) ( 1-\_i(t+1) ). \]
-
-The resulting score satisfies
-
-\[ 0FE_i(t). \]
+The resulting score satisfies $$\begin{equation}
+0\le FE_i(t)\le 1
+\end{equation}$$
 
 A larger value indicates increased vulnerability to aggregation
 interruption caused by simultaneous workload pressure, queue congestion,
 and reliability degradation.
 
-**Step 5: Operational Risk Estimation.**
+**Step 5: Operational Risk Estimation**
 
 The overall operational risk is determined by jointly considering
-capacity degradation and failure exposure:
+capacity degradation and failure exposure: $$\begin{equation}
+Risk_i(t)=
+\eta_1
+\Bigl(
+1-Cap_i(t+1)
+\Bigr)
++
+\eta_2 FE_i(t)
+\end{equation}$$ subject to $$\begin{equation}
+\eta_1+\eta_2=1,
+\qquad
+\eta_1,\eta_2\in[0,1]
+\end{equation}$$
 
-\[ Risk_i(t) \_1 ( 1-Cap_i(t+1) ) + \_2 FE_i(t), \]
-
-subject to
-
-\[ \_1+\_2=1, \_1,\_2. \]
-
-Consequently,
-
-\[ 0Risk_i(t). \]
+Consequently, $$\begin{equation}
+0\le Risk_i(t)\le 1
+\end{equation}$$
 
 A larger value indicates that the fog node is approaching overload,
 instability, or service degradation.
 
-**Step 6: Risk Classification.**
+**Step 6: Risk Classification**
 
 Based on the estimated operational risk, the framework categorizes the
-operating condition of fog node $F_i$ as
+operating condition of fog node $F_i$ as $$\begin{equation}
+Status_i(t)
+=
+\begin{cases}
+\text{Stable},
+&
+Risk_i(t)<\tau_r
+\\
+\text{Critical},
+&
+Risk_i(t)\ge\tau_r
+\end{cases}
+\end{equation}$$ where $\tau_r$ denotes the adaptive risk threshold
+maintained by AFLTO.
 
-\[ Status_i(t)
-
-::: cases
-, & Risk_i(t)\<\_r, \[1mm\] , & Risk_i(t)\_r.
-:::
-
-\]
-
-where $\tau_r$ denotes the adaptive risk threshold maintained by AFLTO.
-
-**Step 7: Prediction Output.**
+**Step 7: Prediction Output**
 
 Finally, the prediction phase generates the prediction state vector
-
-\[ \_i(t)
-
-::: bmatrix
-Cap_i(t+1) FE_i(t) Risk_i(t)
-:::
-
-. \]
+$$\begin{equation}
+\mathbf{Pred}_i(t)
+=
+\begin{bmatrix}
+Cap_i(t+1)\\
+FE_i(t)\\
+Risk_i(t)
+\end{bmatrix}
+\end{equation}$$
 
 The prediction vector is forwarded to PLOSHA for adaptive aggregation
 planning and to RMFR for risk-aware recovery decision making.
@@ -658,52 +721,81 @@ Consequently, the framework reduces aggregation latency, minimizes
 aggregation-loss exposure, and improves resilience against overloads and
 fog-node failures.
 
-**Step 1: Prediction-Driven Aggregation Planning.**
+**Step 1: Prediction-Driven Aggregation Planning**
 
-For each fog node $F_i$, PLOSHA receives the prediction vector generated
-in Phase II:
+Step 1: Prediction-Driven Aggregation Planning
 
-\[ \_i(t)
-
-::: bmatrix
-Cap_i(t+1)  FE_i(t)  Risk_i(t)
-:::
-
-. \]
-
-The prediction vector summarizes the anticipated aggregation capacity,
-failure exposure, and operational risk of fog node $F_i$.
+For each fog node $F_i$, PLOSHA receives the prediction vector
+$\mathbf{Pred}_i(t)$, which summarizes the anticipated aggregation
+capacity, failure exposure, and operational risk of fog node $F_i$.
 
 Let $m$ denote the number of micro-slots within aggregation epoch
-$\Delta$, where
+$\Delta$, where $$\begin{equation}
+1
+\le
+m
+\le
+m_{\max}
+\end{equation}$$
 
-\[ 1 m m\_. \]
+To model aggregation overhead, PLOSHA defines $$\begin{equation}
+T_{\mathrm{agg}}(m)
+=
+\beta_t m
+\end{equation}$$ where $\beta_t$ denotes the average processing overhead
+per micro-slot.
 
-To model aggregation overhead, PLOSHA defines
+To quantify the aggregation-loss exposure associated with a micro-slot
+failure, PLOSHA defines $$\begin{equation}
+L_{\mathrm{agg}}(m)
+=
+\frac{|\delta_k|}
+{\sum_{r=1}^{m}|\delta_r|}
+\end{equation}$$
 
-\[ T\_(m) \_t m, \]
-
-where $\beta_t$ denotes the average processing overhead associated with
-a single micro-slot.
-
-To quantify aggregation-loss exposure, PLOSHA defines
-
-\[ L\_(m) \_r=1\^m\|\_r\|. \]
-
-Under uniform epoch partitioning,
-
-\[ L\_(m) . \]
+Under uniform epoch partitioning, the aggregation-loss exposure
+simplifies to $$\begin{equation}
+L_{\mathrm{agg}}(m)
+=
+\frac{1}{m}
+\end{equation}$$
 
 This quantity represents the maximum fraction of the aggregation epoch
 that may be lost when a single micro-slot becomes unavailable.
 
-The optimal aggregation granularity is selected as
-
-\[ m\^\* \_1mm\_ , \]
-
-subject to
-
-\[ \_1+\_2+\_3=1, \_1,\_2,\_3. \]
+The optimal aggregation granularity is determined by solving
+$$\begin{equation}
+\begin{aligned}
+m^{*}
+=
+\arg\min_{1\le m\le m_{\max}}
+\Biggl[
+&
+\lambda_1
+T_{\mathrm{agg}}(m)
+\Bigl(
+1-Cap_i(t+1)
+\Bigr)
+\\
+&
++
+\lambda_2
+FE_i(t)
+L_{\mathrm{agg}}(m)
+\\
+&
++
+\lambda_3
+\Bigl(
+1-Rel_i(t)
+\Bigr)
+L_{\mathrm{agg}}(m)
+\Biggr]
+\end{aligned}
+\end{equation}$$ subject to $$\begin{equation}
+\lambda_1+\lambda_2+\lambda_3=1,\qquad
+\lambda_1,\lambda_2,\lambda_3\in[0,1]
+\end{equation}$$
 
 The optimization jointly balances aggregation efficiency, failure
 exposure, and reliability preservation. Consequently, larger failure
@@ -711,27 +803,31 @@ exposure or lower reliability naturally increases the number of
 micro-slots, thereby improving fault isolation and reducing
 aggregation-loss exposure.
 
-**Step 2: Adaptive Epoch Partitioning.**
+**Step 2: Adaptive Epoch Partitioning**
 
-Based on the optimized value $m^{*}$, the aggregation epoch is
-partitioned into the micro-slot set
-
-\[ D_i \_k\_k=1\^m\^\*. \]
-
-Each micro-slot $\delta_k$ represents a temporal aggregation interval
-containing sensor reports received during that interval.
+Based on the optimized aggregation granularity $m^{*}$, the aggregation
+epoch is partitioned into the set of micro-slots $$\begin{equation}
+\mathcal{D}_i
+=
+\{\delta_k\}_{k=1}^{m^{*}}
+\end{equation}$$ Each micro-slot $\delta_k$ represents a temporal
+aggregation interval that contains the sensor reports received during
+the corresponding interval.
 
 Under stable operating conditions, PLOSHA selects fewer micro-slots to
 reduce aggregation overhead and processing latency. Conversely, under
 adverse operating conditions, additional micro-slots are introduced to
 improve fault localization and recovery efficiency.
 
-**Step 3: Secure Data Collection and Ciphertext Transformation.**
+**Step 3: Secure Data Collection and Ciphertext Transformation**
 
 For each sensor $S_j$ associated with fog node $F_i$, the sensed value
-$d_j$ is encrypted using the fog-scoped AES-GCM key $k_i$:
-
-\[ CT_j Enc\_k_i(d_j). \]
+$d_j$ is encrypted using the fog-specific AES-GCM key $k_i$:
+$$\begin{equation}
+CT_j
+=
+\mathrm{Enc}_{k_i}(d_j)
+\end{equation}$$
 
 Direct Paillier encryption at resource-constrained sensors incurs
 substantial computational, memory, and energy overhead. Therefore,
@@ -744,11 +840,14 @@ lightweight ciphertexts into homomorphic ciphertexts without exposing
 plaintext values outside the enclave.
 
 Upon reception, the ciphertext is processed exclusively within the
-enclave:
-
-\[ d_j Dec\_k_i(CT_j), \]
-
-\[ C_j Enc\_pk_P(d_j). \]
+enclave: $$\begin{equation}
+d_j=
+Dec_{k_i}(CT_j)
+\end{equation}$$ $$\begin{equation}
+C_j
+=
+\mathrm{Enc}_{pk_P}(d_j)
+\end{equation}$$
 
 The plaintext value exists only transiently within the protected enclave
 and is immediately erased following transformation.
@@ -760,79 +859,124 @@ material remains confined to trusted infrastructure, thereby reducing
 cryptographic exposure and simplifying key management across large-scale
 IIoT deployments.
 
-**Step 4: Micro-Slot Aggregation.**
+**Step 4: Micro-Slot Aggregation**
 
 For each micro-slot $\delta_k\in\mathcal D_i$, the enclave performs
 homomorphic aggregation over all Paillier ciphertexts associated with
-that interval:
+that interval: $$\begin{equation}
+C_{\mathrm{micro},k}
+=
+\prod_{j\in\delta_k}
+C_j
+\pmod{n_P^2}
+\end{equation}$$
 
-\[ C\_,k \_j_k C_j . \]
+By the additive homomorphic property of Paillier encryption
+$$\begin{equation}
+\mathrm{Dec}_{sk_P}
+\!\left(
+C_{\mathrm{micro},k}
+\right)
+=
+\sum_{j\in\delta_k}
+d_j
+\end{equation}$$
 
-By the additive homomorphic property of Paillier encryption,
-
-\[ Dec\_sk_P !( C\_,k ) \_j_k d_j. \]
-
-**Step 5: Hierarchical Fog Aggregation.**
+**Step 5: Hierarchical Fog Aggregation**
 
 The encrypted micro-slot aggregates are recursively combined to produce
-the fog-level aggregate:
+the fog-level aggregate: $$\begin{equation}
+C_{\mathrm{agg},i}
+=
+\prod_{k=1}^{m^{*}}
+C_{\mathrm{micro},k}
+\pmod{n_P^2}
+\end{equation}$$
 
-\[ C\_,i \_k=1\^m\^\* C\_,k . \]
-
-Consequently,
-
-\[ Dec\_sk_P !( C\_,i ) \_k=1\^m\^\* \_j_k d_j. \]
+Consequently, $$\begin{equation}
+\mathrm{Dec}_{sk_P}
+\!\left(
+C_{\mathrm{agg},i}
+\right)
+=
+\sum_{k=1}^{m^{*}}
+\sum_{j\in\delta_k}
+d_j
+\end{equation}$$
 
 The hierarchical aggregation structure localizes aggregation loss to
 individual micro-slots. Therefore, failures affecting a specific
 micro-slot require recovery only for that micro-slot rather than the
 entire aggregation epoch.
 
-**Step 6: Aggregation Completeness Assessment.**
+**Step 6: Aggregation Completeness Assessment**
 
 To identify incomplete aggregation caused by communication failures,
 sensor outages, or fog-node instability, PLOSHA computes the aggregation
-completeness score
-
-\[ V_i(t) . \]
+completeness score $$\begin{equation}
+V_i(t)
+=
+\frac{
+N_{\mathrm{recv}}(t)
+}{
+N_{\mathrm{exp}}(t)
+}
+\end{equation}$$
 
 The expected number of reports is determined from the active sensor
-registry maintained by the KRM:
-
-\[ N\_(t) \_S_j_i(t) Act_j(t), \]
-
-where
-
-\[ Act_j(t)
-
-::: cases
-1, & S_j, \[2mm\] 0, & .
-:::
-
-\]
+registry maintained by the KRM: $$\begin{equation}
+N_{\mathrm{exp}}(t)
+=
+\sum_{S_j\in\Gamma_i(t)}
+Act_j(t)
+\end{equation}$$ where $$\begin{equation}
+Act_j(t)
+=
+\begin{cases}
+1,
+&
+\text{if sensor }S_j\text{ is active}\\
+0,
+&
+\text{otherwise}
+\end{cases}
+\end{equation}$$
 
 Consequently, the completeness metric remains valid under dynamic sensor
 participation, temporary disconnections, and varying IIoT workloads.
 
-The aggregation completeness indicator is defined as
+The aggregation completeness indicator is defined as $$\begin{equation}
+\Phi_i(t)
+=
+\begin{cases}
+1,
+&
+V_i(t)<\tau_v\\
+0,
+&
+\text{otherwise}
+\end{cases}
+\end{equation}$$ where $\tau_v$ denotes the adaptive completeness
+threshold optimized by AFLTO.
 
-\[ \_i(t)
+**Step 7: Aggregation Output**
 
-::: cases
-1, & V_i(t)\<\_v, \[2mm\] 0, & .
-:::
-
-\]
-
-where $\tau_v$ denotes the adaptive completeness threshold optimized by
-AFLTO.
-
-**Step 7: Aggregation Output.**
-
-Finally, PLOSHA generates the aggregation state tuple
-
-\[ Agg_i(t) ( C\_,i, m\^\*, V_i(t), \_i(t), Cap_i(t+1), Risk_i(t),
-Rel_i(t) ). \]
+Finally, PLOSHA generates the aggregation state tuple $$\begin{equation}
+\begin{aligned}
+Agg_i(t)
+&=
+\Bigl(
+C_{\mathrm{agg},i},\,
+m^{*},\,
+V_i(t),\,
+\Phi_i(t), \\
+&\quad
+Cap_i(t+1),\,
+Risk_i(t),\,
+Rel_i(t)
+\Bigr)
+\end{aligned}
+\end{equation}$$
 
 The aggregation state tuple summarizes the encrypted aggregate, adaptive
 aggregation configuration, aggregation completeness status, predicted
@@ -841,14 +985,15 @@ aggregation capacity, operational risk, and current reliability score.
 The resulting tuple is forwarded to the Risk-Aware Multi-Layer Fault
 Recovery (RMFR) module for recovery decision making.
 
-**Aggregation-Loss Localization Property.**
+**Aggregation-Loss Localization Property**
 
 Because PLOSHA partitions each aggregation epoch into $m^{*}$
 micro-slots, a failure affecting a single micro-slot impacts at most
-
-\[ L\_(m\^\*) \]
-
-of the aggregation epoch under uniform partitioning.
+$$\begin{equation}
+L_{\mathrm{agg}}(m^{*})
+=
+\frac{1}{m^{*}}
+\end{equation}$$ of the aggregation epoch under uniform partitioning.
 
 Consequently, aggregation-loss exposure decreases monotonically as the
 number of micro-slots increases, thereby providing the foundation for
@@ -867,116 +1012,95 @@ localizes recovery to affected micro-slots whenever possible, thereby
 reducing recovery overhead, communication cost, and aggregation-loss
 exposure.
 
-**Step 1: Recovery Urgency Evaluation.**
+**Step 1: Recovery Urgency Evaluation**
 
 For each fog node $F_i$, RMFR receives the aggregation state tuple
+$Agg_i(t)$.
 
-$$Agg_i(t)
-=
-\Bigl(
-C_{\mathrm{agg},i},
-m^{*},
-V_i(t),
-\Phi_i(t),
-Cap_i(t+1),
-Risk_i(t),
-Rel_i(t)
-\Bigr).$$
-
-RMFR computes the recovery urgency score as
-
-$$RU_i(t)
+RMFR computes the recovery urgency score as $$\begin{equation}
+RU_i(t)
 =
 \rho_1 Risk_i(t)
 +
 \rho_2\bigl(1-V_i(t)\bigr)
 +
-\rho_3\bigl(1-Rel_i(t)\bigr),$$
+\rho_3\bigl(1-Rel_i(t)\bigr)
+\end{equation}$$ where $$\begin{equation}
+\rho_1+\rho_2+\rho_3=1,\qquad
+\rho_1,\rho_2,\rho_3\in[0,1]
+\end{equation}$$
 
-where
-
-$$\rho_1+\rho_2+\rho_3=1,
-\qquad
-\rho_1,\rho_2,\rho_3\in[0,1].$$
-
-Since all variables are normalized,
-
-$$0\le RU_i(t)\le 1.$$
+Since all variables are normalized $$\begin{equation}
+0\le RU_i(t)\le 1
+\end{equation}$$
 
 A larger value of $RU_i(t)$ indicates a higher probability of
 aggregation disruption and service degradation.
 
-**Step 2: Recovery Escalation Decision.**
+**Step 2: Recovery Escalation Decision**
 
 RMFR first checks the aggregation completeness indicator $\Phi_i(t)$. If
 $\Phi_i(t)=1$, recovery is mandatory. The recovery mode is determined as
-
-$$Mode_i(t)
+$$\begin{equation}
+Mode_i(t)
 =
 \begin{cases}
 \textsf{Normal},
 &
-\Phi_i(t)=0 \land RU_i(t)<\tau_1,
-\\[1mm]
+\Phi_i(t)=0 \land RU_i(t)<\tau_1\\[1mm]
 \textsf{Delegation},
 &
-\Phi_i(t)=0 \land \tau_1\le RU_i(t)<\tau_2,
-\\[1mm]
+\Phi_i(t)=0 \land \tau_1\le RU_i(t)<\tau_2\\[1mm]
 \textsf{MicroRecovery},
 &
-\Phi_i(t)=1 \land RU_i(t)<\tau_3,
-\\[1mm]
+\Phi_i(t)=1 \land RU_i(t)<\tau_3\\[1mm]
 \textsf{Failover},
 &
-RU_i(t)\ge\tau_3 \lor Rel_i(t)\le\tau_f.
-\end{cases}$$
-
-where
-
-$$0\le \tau_1<\tau_2<\tau_3\le 1,
-\qquad
-\tau_f\in[0,1].$$
+RU_i(t)\ge\tau_3 \lor Rel_i(t)\le\tau_f
+\end{cases}
+\end{equation}$$ where $$\begin{equation}
+0\le \tau_1<\tau_2<\tau_3\le 1,\qquad
+\tau_f\in[0,1]
+\end{equation}$$
 
 This escalation strategy ensures that incomplete aggregation is
 recovered before cloud commitment and that critically unreliable fog
 nodes are proactively removed from service.
 
-**Step 3: Recovery Candidate Selection.**
+**Step 3: Recovery Candidate Selection**
 
 When $Mode_i(t)\in\{\textsf{Delegation},\textsf{Failover}\}$, RMFR
 evaluates each neighboring fog node $F_j\in\mathcal N_i$ using
-
-$$U_j(t)
+$$\begin{equation}
+U_j(t)
 =
 \alpha_c Cap_j(t+1)
 +
 \alpha_r Rel_j(t)
 +
-\alpha_k\bigl(1-Risk_j(t)\bigr),$$
-
-where
-
-$$\alpha_c+\alpha_r+\alpha_k=1,
+\alpha_k\bigl(1-Risk_j(t)\bigr)
+\end{equation}$$ where $$\begin{equation}
+\alpha_c+\alpha_r+\alpha_k=1,
 \qquad
-\alpha_c,\alpha_r,\alpha_k\in[0,1].$$
+\alpha_c,\alpha_r,\alpha_k\in[0,1]
+\end{equation}$$
 
-The optimal recovery candidate is selected as
-
-$$F_i^{*}
+The optimal recovery candidate is selected as $$\begin{equation}
+F_i^{*}
 =
 \arg\max_{F_j\in\mathcal N_i}
-U_j(t).$$
+U_j(t)
+\end{equation}$$
 
 A larger utility indicates stronger recovery suitability, higher
 reliability, and lower operational risk.
 
-**Step 4: Layer-I Predictive Delegation Recovery.**
+**Step 4: Layer-I Predictive Delegation Recovery**
 
 When $Mode_i(t)=\textsf{Delegation}$, the current aggregation process
 remains complete, but future overload or instability is predicted. RMFR
-constructs the delegation state package
-
-$$DSP_i(t)
+constructs the delegation state package $$\begin{equation}
+DSP_i(t)
 =
 \Bigl(
 m^{*},
@@ -985,22 +1109,21 @@ Seq_i(t),
 Cap_i(t+1),
 Risk_i(t),
 Rel_i(t)
-\Bigr),$$
+\Bigr)
+\end{equation}$$ where $Seq_i(t)$ denotes the aggregation sequence
+number of the current epoch. The KRM securely seals and transmits
+$DSP_i(t)$ to the attested TEE enclave of $F_i^{*}$. The delegated fog
+node then performs shadow aggregation in subsequent epochs and prepares
+to absorb future workload without immediate sensor reassociation. This
+proactive delegation mitigates overload before aggregation quality
+deteriorates.
 
-where $Seq_i(t)$ denotes the aggregation sequence number of the current
-epoch. The KRM securely seals and transmits $DSP_i(t)$ to the attested
-TEE enclave of $F_i^{*}$. The delegated fog node then performs shadow
-aggregation in subsequent epochs and prepares to absorb future workload
-without immediate sensor reassociation. This proactive delegation
-mitigates overload before aggregation quality deteriorates.
-
-**Step 5: Layer-II Selective Micro-Slot Recovery.**
+**Step 5: Layer-II Selective Micro-Slot Recovery**
 
 When $Mode_i(t)=\textsf{MicroRecovery}$, the fog node remains
 operational but aggregation incompleteness is detected. RMFR identifies
-the incomplete micro-slot set as
-
-$$\mathcal D_i^{miss}
+the incomplete micro-slot set as $$\begin{equation}
+\mathcal D_i^{miss}
 =
 \left\{
 \delta_k\in\mathcal D_i
@@ -1008,29 +1131,27 @@ $$\mathcal D_i^{miss}
 N_{\delta_k}^{recv}
 <
 N_{\delta_k}^{exp}
-\right\},$$
-
-and the valid micro-slot set as
-
-$$\mathcal D_i^{valid}
+\right\}
+\end{equation}$$ and the valid micro-slot set as $$\begin{equation}
+\mathcal D_i^{valid}
 =
 \mathcal D_i
 \setminus
-\mathcal D_i^{miss}.$$
+\mathcal D_i^{miss}
+\end{equation}$$
 
 For each incomplete micro-slot, missing ciphertext reports are
 retransmitted from sensors or reconstructed from locally buffered
 ciphertexts maintained during the current aggregation epoch. The
-recovered micro-slot aggregate is computed as
-
-$$C_{\mathrm{micro},k}^{rec}
+recovered micro-slot aggregate is computed as $$\begin{equation}
+C_{\mathrm{micro},k}^{rec}
 =
 \prod_{j\in\delta_k^{rec}}
-C_j.$$
+C_j
+\end{equation}$$
 
-The recovered fog-level aggregate becomes
-
-$$C_{\mathrm{agg},i}^{rec}
+The recovered fog-level aggregate becomes $$\begin{equation}
+C_{\mathrm{agg},i}^{rec}
 =
 \left(
 \prod_{\delta_k\in\mathcal D_i^{valid}}
@@ -1039,26 +1160,26 @@ C_{\mathrm{micro},k}
 \left(
 \prod_{\delta_k\in\mathcal D_i^{miss}}
 C_{\mathrm{micro},k}^{rec}
-\right).$$
+\right)
+\end{equation}$$
 
 Since only incomplete micro-slots are recomputed, RMFR avoids full-epoch
 reaggregation and reduces recovery latency and communication overhead.
 
-**Step 6: Layer-III Reliability-Aware Failover Recovery.**
+**Step 6: Layer-III Reliability-Aware Failover Recovery**
 
 When $Mode_i(t)=\textsf{Failover}$, the current fog node is considered
 unavailable or critically unstable. The replacement fog node is selected
-as
-
-$$F_i^{*}
+as $$\begin{equation}
+F_i^{*}
 =
 \arg\max_{F_j\in\mathcal N_i}
-U_j(t).$$
+U_j(t)
+\end{equation}$$
 
 The KRM provisions a temporary recovery credential to the attested TEE
-enclave of $F_i^{*}$ and migrates the failover state
-
-$$FSM_i(t)
+enclave of $F_i^{*}$ and migrates the failover state $$\begin{equation}
+FSM_i(t)
 =
 \Bigl(
 m^{*},
@@ -1066,44 +1187,46 @@ C_{\mathrm{agg},i},
 \mathcal D_i,
 \Phi_i(t),
 Rel_i(t)
-\Bigr).$$
+\Bigr)
+\end{equation}$$
 
-The sensor-association mapping is then updated as
-
-$$\Gamma(S_j)
+The sensor-association mapping is then updated as $$\begin{equation}
+\Gamma(S_j)
 \leftarrow
 F_i^{*},
 \qquad
-\forall S_j:\Gamma(S_j)=F_i.$$
+\forall S_j:\Gamma(S_j)=F_i
+\end{equation}$$
 
 Consequently, sensors previously associated with $F_i$ are redirected to
 the replacement fog node in subsequent aggregation epochs.
 
-**Step 7: Reliability Reinforcement and Recovery Output.**
+**Step 7: Reliability Reinforcement and Recovery Output**
 
-The recovery-success indicator is defined as
-
-$$Succ_i(t)
+The recovery-success indicator is defined as $$\begin{equation}
+Succ_i(t)
 =
 \begin{cases}
 1,
 &
-\text{aggregation successfully completed},
-\\[1mm]
+\text{if aggregation is successfully completed}\\
 0,
 &
-\text{otherwise}.
-\end{cases}$$
+\text{otherwise}
+\end{cases}
+\end{equation}$$
 
-The reliability score is updated as
-
-$$Rel_i(t+1)
+The reliability score is updated as $$\begin{equation}
+\begin{aligned}
+Rel_i(t+1)
 =
+&\;
 \min
-\left\{
-1,
-\;
+\Bigl\{
+1,\;
 \beta_r Rel_i(t)
+\\
+&
 +
 (1-\beta_r)
 \Bigl[
@@ -1111,25 +1234,24 @@ $$Rel_i(t+1)
 +
 \lambda_v V_i(t)
 \Bigr]
-\right\},$$
-
-where
-
-$$\lambda_s+\lambda_v=1,
+\Bigr\}
+\end{aligned}
+\end{equation}$$ where $$\begin{equation}
+\lambda_s+\lambda_v=1,
 \qquad
-\lambda_s,\lambda_v\in[0,1].$$
+\lambda_s,\lambda_v\in[0,1]
+\end{equation}$$
 
 This update rewards successful recovery and aggregation completeness
 while preserving long-term reliability history. The recovery status is
-defined as
-
-$$RecStatus_i(t)
+defined as $$\begin{equation}
+RecStatus_i(t)
 =
-Succ_i(t).$$
+Succ_i(t)
+\end{equation}$$
 
-Finally, RMFR generates the recovery state tuple
-
-$$Rec_i(t)
+Finally, RMFR generates the recovery state tuple $$\begin{equation}
+Rec_i(t)
 =
 \Bigl(
 Mode_i(t),
@@ -1137,22 +1259,22 @@ RU_i(t),
 F_i^{*},
 Rel_i(t+1),
 RecStatus_i(t)
-\Bigr).$$
+\Bigr)
+\end{equation}$$
 
 The recovery state tuple is forwarded to AFLTO in Phase V for adaptive
 threshold optimization and closed-loop system refinement.
 
-**Recovery Complexity Analysis.**
+**Recovery Complexity Analysis**
 
 Because RMFR localizes recovery to affected micro-slots only, the
 recovery complexity is proportional to the number of incomplete
-micro-slots:
-
-$$O\bigl(|\mathcal D_i^{miss}|\bigr),$$
-
-rather than the total number of micro-slots,
-
-$$O(m^{*}).$$
+micro-slots: $$\begin{equation}
+O\bigl(|\mathcal D_i^{miss}|\bigr)
+\end{equation}$$ rather than the total number of micro-slots
+$$\begin{equation}
+O(m^{*})
+\end{equation}$$
 
 Consequently, recovery overhead remains bounded even under large
 aggregation epochs, thereby improving scalability and fault resilience
@@ -1234,165 +1356,245 @@ establishes a closed-loop optimization process that continuously adapts
 aggregation and recovery behavior according to observed aggregation
 quality, recovery pressure, and reliability conditions.
 
-**Step 1: Final Aggregate Commitment.**
+**Step 1: Final Aggregate Commitment**
 
-AFLTO first receives the recovery state
+AFLTO first receives the recovery state $$\begin{equation}
+Rec_i(t)
+=
+\Bigl(
+Mode_i(t),
+RU_i(t),
+F_i^{*},
+Rel_i(t+1),
+RecStatus_i(t)
+\Bigr)
+\end{equation}$$
 
-\[ Rec_i(t) ( Mode_i(t), RU_i(t), F_i\^\*, Rel_i(t+1), RecStatus_i(t) ).
-\]
-
-The final aggregate is determined as
-
-$$C_i^{\mathrm{final}}
+The final aggregate is determined as $$\begin{equation}
+C_i^{\mathrm{final}}
 =
 \begin{cases}
 C_{\mathrm{agg},i},
 &
-\Phi_i(t)=0,
-\\[2mm]
-
+\Phi_i(t)=0
+\\[1mm]
 C_{\mathrm{agg},i}^{\mathrm{rec}},
 &
-\Phi_i(t)=1,
-\\
-&
-RecStatus_i(t)=1,
-\\[2mm]
-
+\Phi_i(t)=1 \land RecStatus_i(t)=1
+\\[1mm]
 C_{\mathrm{agg},i},
 &
-\Phi_i(t)=1,
-\\
-&
-RecStatus_i(t)=0.
-\end{cases}$$
+\Phi_i(t)=1 \land RecStatus_i(t)=0
+\end{cases}
+\end{equation}$$
 
 To ensure integrity and authenticity, the enclave constructs
+$$\begin{equation}
+T_i(t)
+=
+\Bigl(
+C_i^{\mathrm{final}},
+Mode_i(t),
+Rel_i(t+1),
+RecStatus_i(t)
+\Bigr)
+\end{equation}$$ and generates $$\begin{equation}
+\sigma_i(t)
+=
+\textsf{Sign}_{sk_i^{\mathrm{TEE}}}
+\Bigl(
+H(T_i(t))
+\Bigr)
+\end{equation}$$ The cloud stores $$\begin{equation}
+\Bigl(
+T_i(t),
+\sigma_i(t)
+\Bigr)
+\end{equation}$$ only after successful signature verification.
 
-\[ T_i(t) ( C_i\^, Mode_i(t), Rel_i(t+1), RecStatus_i(t) ) \]
-
-and generates
-
-\[ \_i(t) [Sign]{.sans-serif}\_sk_i\^TEE ( H(T_i(t)) ). \]
-
-The cloud stores
-
-\[ ( T_i(t), \_i(t) ) \]
-
-only after successful signature verification.
-
-**Step 2: Performance Evaluation.**
+**Step 2: Performance Evaluation**
 
 Following cloud commitment, AFLTO evaluates the operational
 effectiveness of the current aggregation epoch. The evaluation jointly
 considers aggregation completeness and fog-node reliability to quantify
 the overall aggregation quality.
 
-The aggregation quality score is computed as
-
-$$Score_i(t)
+The aggregation quality score is computed as $$\begin{equation}
+Score_i(t)
 =
 \omega_1 V_i(t)
 +
-\omega_2 Rel_i(t+1),$$
-
-where
-
-$$\omega_1+\omega_2=1,
+\omega_2 Rel_i(t+1)
+\end{equation}$$ where $$\begin{equation}
+\omega_1+\omega_2=1,
 \qquad
-\omega_1,\omega_2 \in [0,1].$$
+\omega_1,\omega_2 \in [0,1]
+\end{equation}$$
 
 Since both $V_i(t)$ and $Rel_i(t+1)$ are normalized to the interval
-$[0,1]$,
-
-$$0
+$[0,1]$ $$\begin{equation}
+0
 \le
 Score_i(t)
 \le
-1.$$
+1
+\end{equation}$$
 
 A larger value of $Score_i(t)$ indicates that the aggregation process
 achieved higher completeness while maintaining stronger operational
 reliability. This score serves as the primary performance indicator for
 the subsequent learning and threshold-optimization processes.
 
-**Step 3: Historical Learning and Error Estimation.**
+**Step 3: Historical Learning and Error Estimation**
 
 To capture long-term system behavior, AFLTO updates the historical
-performance profile \[ Hist_i(t+1) Hist_i(t) + (1-)Score_i(t), \] where
-\[(0,1).\]
+performance profile $$\begin{equation}
+Hist_i(t+1)
+=
+\gamma Hist_i(t)
++
+(1-\gamma)Score_i(t)
+\end{equation}$$ where $$\begin{equation}
+\gamma\in(0,1)
+\end{equation}$$
 
-The current and historical observations are fused as \[ Score_i\^\*(t)
-\_hHist_i(t+1) + (1-\_h)Score_i(t), \]
+The current and historical observations are fused as $$\begin{equation}
+Score_i^{*}(t)=
+\alpha_hHist_i(t+1)
++
+(1-\alpha_h)Score_i(t)
+\end{equation}$$ where $$\begin{equation}
+\alpha_h\in(0,1)
+\end{equation}$$
 
-where
-
-\[ \_h(0,1). \]
-
-The adaptive control error is then computed as
-
-\[ e_i(t) \_1 ( \|S Score_i\^\*(t) ) + \_2RU_i(t) + \_3 ( 1-Rel_i(t+1)
-), \]
-
-subject to
-
-\[ \_1+\_2+\_3=1. \]
+The adaptive control error is then computed as $$\begin{equation}
+e_i(t)=
+\kappa_1
+\Bigl(
+\bar S
+Score_i^{*}(t)
+\Bigr)
++
+\kappa_2RU_i(t)
++
+\kappa_3
+\Bigl(
+1-Rel_i(t+1)
+\Bigr)
+\end{equation}$$ subject to $$\begin{equation}
+\kappa_1+\kappa_2+\kappa_3=1
+\end{equation}$$
 
 A larger error indicates deteriorating aggregation quality, increasing
 recovery pressure, or reliability degradation.
 
-**Step 4: Adaptive Threshold Optimization.**
+**Step 4: Adaptive Threshold Optimization**
 
 Using the adaptive control error, AFLTO updates the aggregation and
-recovery thresholds through bounded optimization:
+recovery thresholds through bounded optimization: $$\begin{equation}
+\tau_x(t+1)
+=
+\Pi_{[0,1]}
+\Bigl(
+\tau_x(t)
++
+\mu_x e_i(t)
+\Bigr)
+\end{equation}$$ where $$\begin{equation}
+x
+\in
+{v,r,1,2,3,f}
+\end{equation}$$ and $$\begin{equation}
+\Pi_{[0,1]}(y)
+=
+\min
+\left\{
+1,
+\max(0,y)
+\right\}
+\end{equation}$$
 
-\[ \_x(t+1) \_\[0,1\] ( \_x(t) + \_x e_i(t) ), \]
-
-where
-
-\[ x v,r,1,2,3,f, \]
-
-and
-
-\[ \_\[0,1\](y) 1,(0,y). \]
-
-The ordering constraint
-
-\[ \_1(t+1) \< \_2(t+1) \< \_3(t+1) \]
-
-is enforced after each update cycle to preserve recovery-escalation
-consistency.
+The ordering constraint $$\begin{equation}
+\tau_1(t+1)
+<
+\tau_2(t+1)
+<
+\tau_3(t+1)
+\end{equation}$$ is enforced after each update cycle to preserve
+recovery-escalation consistency.
 
 As the adaptive error increases, the thresholds become more sensitive,
 enabling earlier intervention and stronger resilience. Conversely, when
 operational conditions improve, the thresholds gradually relax to reduce
 unnecessary recovery actions.
 
-**Step 5: Feedback Generation and Closed-Loop Adaptation.**
+**Step 5: Feedback Generation and Closed-Loop Adaptation**
 
-Finally, AFLTO generates the feedback state
-
-\[ FB_i(t) ( Score_i(t), Hist_i(t+1), e_i(t), \_v(t+1), \_r(t+1),
-\_1(t+1), \_2(t+1), \_3(t+1), \_f(t+1) ). \]
+Finally, AFLTO generates the feedback state $$\begin{equation}
+\begin{aligned}
+FB_i(t)
+=
+&\;
+\Bigl(
+Score_i(t),
+Hist_i(t+1),
+e_i(t),
+\tau_v(t+1),
+\tau_r(t+1),
+\\
+&
+\tau_1(t+1),
+\tau_2(t+1),
+\tau_3(t+1),
+\tau_f(t+1)
+\Bigr)
+\end{aligned}
+\end{equation}$$
 
 The feedback state is supplied to the prediction and recovery modules
-during the next aggregation epoch:
-
-\[ State_i(t) \_i(t+1) Pred_i(t) Agg_i(t) Rec_i(t) FB_i(t). \]
+during the next aggregation epoch: $$\begin{align}
+State_i(t)
+&\rightarrow
+\widehat{State}_i(t+1)
+\rightarrow
+Pred_i(t)
+\rightarrow
+Agg_i(t)
+\\ &
+\rightarrow
+Rec_i(t)
+\rightarrow
+FB_i(t)
+\end{align}$$
 
 Consequently, PLOSHA-RMFR continuously adapts its aggregation and
 recovery behavior according to evolving workload dynamics, reliability
 conditions, and recovery outcomes.
 
-**Adaptive Stability Property.**
+**Adaptive Stability Property**
 
 Since all threshold updates are bounded by the projection operator
-(\_\[0,1\]()),
+$\Pi_{[0,1]}(\cdot)$ $$\begin{equation}
+0
+\le
+\tau_x(t)
+\le
+1,
+\qquad
+\tau_x
+\in
+\left\{
+\tau_v,
+\tau_r,
+\tau_1,
+\tau_2,
+\tau_3,
+\tau_f
+\right\}
+\end{equation}$$
 
-\[ 0 \_v, \_r, \_1, \_2, \_3, \_f , \]
-
-ensuring stable and bounded adaptation throughout long-term system
-operation.
+Thus, all adaptive thresholds remain bounded, ensuring stable long-term
+system operation.
 
 # Security Analysis
 
@@ -1414,18 +1616,18 @@ The security of PLOSHA-RMFR relies on the following assumptions:
 - The adversary cannot simultaneously compromise the KRM and all
   participating TEE enclaves.
 
-## Theorem 1: End-to-End Confidentiality
+## End-to-End Confidentiality
 
 ::: theorem
 **Theorem 1** (End-to-End Confidentiality). *Assume that:*
 
-1.  *AES-GCM provides IND-CPA confidentiality;*
+1.  *AES-GCM provides IND-CPA confidentiality*
 
 2.  *Paillier encryption is semantically secure under the Decisional
-    Composite Residuosity Assumption (DCRA);*
+    Composite Residuosity Assumption (DCRA)*
 
 3.  *Trusted Execution Environments (TEEs) provide secure execution and
-    memory isolation.*
+    memory isolation*
 
 *Then no probabilistic polynomial-time (PPT) adversary can learn any
 information about sensor readings beyond negligible probability during
@@ -1435,10 +1637,9 @@ transmission, aggregation, delegation, or cloud storage.*
 ::: proof
 *Proof.* For each sensor $S_j$, the sensed value $d_j$ is encrypted
 using the fog-scoped AES-GCM key $k_i$ before transmission:
-
 $$\begin{equation}
-CT_j
-\mathsf{Enc}_{k_i}(d_j).
+CT_j=
+\mathsf{Enc}_{k_i}(d_j)
 \label{eq:aes-encryption}
 \end{equation}$$
 
@@ -1447,11 +1648,14 @@ only ciphertexts and cannot distinguish between two chosen plaintexts
 with non-negligible advantage under the IND-CPA security of AES-GCM.
 
 After reception at fog node $F_i$, ciphertext transformation is
-performed exclusively inside an attested TEE enclave:
-
-$$\begin{equation}
-d_j\mathsf{Dec}_{k_i}(CT_j),
-\qquad C_j\mathsf{Enc}_{pk_P}(d_j).
+performed exclusively inside an attested TEE enclave: $$\begin{equation}
+d_j
+=
+\mathsf{Dec}_{k_i}(CT_j),
+\qquad
+C_j
+=
+\mathsf{Enc}_{pk_P}(d_j)
 \label{eq:tee-transform}
 \end{equation}$$
 
@@ -1481,9 +1685,7 @@ Consider the following sequence of hybrid games:
 
 The distinguishing advantage between consecutive games is bounded by the
 security of AES-GCM, Paillier encryption, and TEE confidentiality,
-respectively. Therefore,
-
-$$\begin{equation}
+respectively. Therefore, $$\begin{equation}
 \left|
 \Pr[G_0=1]
 -
@@ -1494,12 +1696,10 @@ $$\begin{equation}
 +
 \epsilon_{Paillier}
 +
-\epsilon_{TEE},
+\epsilon_{TEE}
 \label{eq:hybrid-bound}
-\end{equation}$$
-
-where all three terms are negligible functions of the security parameter
-$\lambda$.
+\end{equation}$$ where all three terms are negligible functions of the
+security parameter $\lambda$.
 
 Since the adversary's advantage in the ideal game $G_3$ is negligible,
 the advantage in the real execution is also negligible.
@@ -1509,7 +1709,7 @@ lifecycle of transmission, aggregation, delegation, recovery, and cloud
 storage. ◻
 :::
 
-## Theorem 2: Compartmentalized Key Exposure
+## Compartmentalized Key Exposure
 
 ::: theorem
 **Theorem 2**. *Let $\mathcal F_i$ denote the cryptographic domain
@@ -1517,18 +1717,22 @@ associated with fog node $F_i$.*
 
 *Compromise of fog-scoped key $k_i$ affects only $\mathcal F_i$ and does
 not increase the adversarial advantage against any domain $\mathcal F_j$
-where $j\neq i$.*
-
-*\[ Adv\_A\^Comp(F_j)=0, ji. \]*
+where $j\neq i$. $$\begin{equation}
+Adv_{\mathcal A}^{Comp}(F_j)
+=
+0,
+\qquad
+j\neq i
+\end{equation}$$*
 :::
 
 ::: proof
 *Proof.* The KRM provisions an independent AES-GCM key $k_i$ to each fog
 node $F_i$.
 
-Sensor assignments satisfy
-
-\[ (S_j)=F_i. \]
+Sensor assignments satisfy $$\begin{equation}
+\Gamma(S_j) = F_i
+\end{equation}$$
 
 Thus, ciphertexts encrypted under key $k_i$ cannot be decrypted using
 key $k_\ell$ where $i\neq \ell$.
@@ -1541,22 +1745,19 @@ fog-scoped cryptographic domain and does not affect other domains. Hence
 compartmentalized key exposure holds. ◻
 :::
 
-## Theorem 3: Aggregation Correctness and Integrity
+## Aggregation Correctness and Integrity
 
 ::: theorem
 **Theorem 3** (Aggregation Correctness and Integrity). *For every
 aggregation epoch $\Delta$, the aggregate ciphertext
 $C_{\mathrm{agg},i}$ generated by PLOSHA correctly represents the sum of
-all sensor readings assigned to fog node $F_i$. Specifically,*
-
-*$$\begin{equation}
-\mathsf{Dec}*{sk_P}
-!\left(
-C*{\mathrm{agg},i}
-\right)
+all sensor readings assigned to fog node $F_i$. Specifically,
+$$\begin{equation}
+\mathsf{Dec}_{sk_P}\!\left(C_{\mathrm{agg},i}\right)
+=
 \sum_{k=1}^{m^*}
-\sum_{j\in\delta_k}
-d_j .
+\sum_{j \in \delta_k}
+d_j
 \label{eq:agg-correctness}
 \end{equation}$$*
 
@@ -1566,37 +1767,33 @@ result is detected with overwhelming probability.*
 
 ::: proof
 *Proof.* For each micro-slot $\delta_k$, the TEE enclave computes the
-encrypted micro-slot aggregate
-
-$$\begin{equation}
+encrypted micro-slot aggregate $$\begin{equation}
 C_{\mathrm{micro},k}
+=
+\left(
 \prod_{j\in\delta_k}
 C_j
-\pmod{n_P^2},
+\right)
+\bmod n_P^2
 \label{eq:micro-agg}
 \end{equation}$$
 
-where $C_j=\mathsf{Enc}_{pk_P}(d_j)$.
-
 By the additive homomorphic property of Paillier encryption,
-
 $$\begin{equation}
-\mathsf{Dec}*{sk_P}
-!\left(
-C*{\mathrm{micro},k}
-\right)
-\sum_{j\in\delta_k}
-d_j .
+\mathsf{Dec}_{sk_P}\!\left(C_{\mathrm{micro},k}\right)
+=
+\sum_{j \in \delta_k} d_j
 \label{eq:micro-correct}
 \end{equation}$$
 
-The fog-level aggregate is subsequently obtained as
-
-$$\begin{equation}
+The fog-level aggregate is subsequently obtained as $$\begin{equation}
 C_{\mathrm{agg},i}
+=
+\left(
 \prod_{k=1}^{m^*}
 C_{\mathrm{micro},k}
-\pmod{n_P^2}.
+\right)
+\bmod n_P^2
 \label{eq:fog-agg}
 \end{equation}$$
 
@@ -1605,39 +1802,30 @@ Combining
 reference="eq:micro-correct"}) and
 ([\[eq:fog-agg\]](#eq:fog-agg){reference-type="ref"
 reference="eq:fog-agg"}), the homomorphic property yields
-
 $$\begin{equation}
-\mathsf{Dec}*{sk_P}
-!\left(
-C*{\mathrm{agg},i}
-\right)\sum_{k=1}^{m^*}
-\sum_{j\in\delta_k}
-d_j ,
+\mathsf{Dec}_{sk_P}\!\left(C_{\mathrm{agg},i}\right)
+=
+\sum_{k=1}^{m^*}
+\sum_{j \in \delta_k}
+d_j
 \label{eq:fog-correct}
-\end{equation}$$
+\end{equation}$$ which proves aggregation correctness.
 
-which proves aggregation correctness.
-
-To guarantee integrity, the final aggregation package
-
-$$\begin{equation}
-T_i\bigl(
+To guarantee integrity, the final aggregation package $$\begin{equation}
+T_i
+=
+\bigl(
 C_i^{\mathrm{final}},
 Mode_i,
 Rel_i,
 RecStatus_i
 \bigr)
 \label{eq:agg-package}
-\end{equation}$$
-
-is digitally signed inside the attested TEE enclave:
-
+\end{equation}$$ is digitally signed inside the attested TEE enclave:
 $$\begin{equation}
 \sigma_i
-\mathsf{Sign}_{sk_i^{\mathrm{TEE}}}
-!\left(
-H(T_i)
-\right).
+=
+\mathsf{Sign}_{sk_i^{\mathrm{TEE}}}\!\left(H(T_i)\right)
 \label{eq:tee-sign}
 \end{equation}$$
 
@@ -1651,7 +1839,7 @@ Hence, both aggregation correctness and aggregation integrity are
 guaranteed. ◻
 :::
 
-## Theorem 4: Secure Delegation Authenticity
+## Secure Delegation Authenticity
 
 ::: theorem
 **Theorem 4** (Secure Delegation Authenticity). *Assume that remote
@@ -1668,41 +1856,32 @@ legitimate delegation recipient except with negligible probability.*
 ::: proof
 *Proof.* During RMFR recovery, delegation is initiated only after the
 candidate fog node $F_i^{*}$ successfully completes remote attestation
-with the KRM. Specifically, the KRM verifies
-
-$$\begin{equation}
-\mathsf{Attest}(F_i^{*}) = 1,
+with the KRM. Specifically, the KRM verifies $$\begin{equation}
+\mathsf{Attest}(F_i^{*}) = 1
 \label{eq:attestation}
-\end{equation}$$
-
-where a value of $1$ indicates that the TEE enclave of $F_i^{*}$ is
-authentic and operating in a trusted state.
+\end{equation}$$ where a value of $1$ indicates that the TEE enclave of
+$F_i^{*}$ is authentic and operating in a trusted state.
 
 Upon successful attestation, the KRM generates a temporary delegation
-credential
-
-$$\begin{equation}
+credential $$\begin{equation}
 Cred_i^{\mathrm{del}}
-\mathsf{GenCred}
-!\left(
+=
+\mathsf{GenCred}\!\left(
 F_i^{*},
 \mathsf{Epoch},
 \mathsf{Expiry}
-\right),
+\right)
 \label{eq:delegation-credential}
-\end{equation}$$
-
-and securely provisions it to the attested enclave of $F_i^{*}$.
+\end{equation}$$ and securely provisions it to the attested enclave of
+$F_i^{*}$.
 
 Before accepting a delegated aggregation state, the receiving fog node
-must verify
-
-$$\begin{equation}
+must verify $$\begin{equation}
 \mathsf{Verify}
 !\left(
 Cred_i^{\mathrm{del}}
 \right)
-=1.
+=1
 \label{eq:credential-verification}
 \end{equation}$$
 
@@ -1714,11 +1893,11 @@ Suppose an adversary attempts to impersonate the delegated fog node
 $F_i^{*}$. A successful impersonation requires one of the following
 events:
 
-1.  forging a valid delegation credential;
+1.  Forging a valid delegation credential
 
-2.  bypassing the remote attestation mechanism; or
+2.  Bypassing the remote attestation mechanism
 
-3.  compromising the trusted TEE enclave.
+3.  Compromising the trusted TEE enclave
 
 Under the assumptions of secure credential generation, trustworthy
 remote attestation, and TEE integrity, each event occurs only with
@@ -1729,23 +1908,19 @@ delegated aggregation states, thereby guaranteeing delegation
 authenticity. ◻
 :::
 
-## Theorem 5: Replay Resistance
+## Replay Resistance
 
 ::: theorem
 **Theorem 5** (Replay Resistance). *Assuming unique aggregation sequence
 identifiers and secure TEE verification, the probability that a
 probabilistic polynomial-time (PPT) adversary $\mathcal{A}$ successfully
-replays a delegation package is negligible. Formally,*
-
-*$$\begin{equation}
+replays a delegation package is negligible. Formally, $$\begin{equation}
 \Pr[\mathsf{Replay}_{\mathcal A}]
 \le
-\epsilon(\lambda),
+\epsilon(\lambda)
 \label{eq:replay-adv}
-\end{equation}$$*
-
-*where $\epsilon(\lambda)$ is a negligible function in the security
-parameter $\lambda$.*
+\end{equation}$$ where $\epsilon(\lambda)$ is a negligible function in
+the security parameter $\lambda$.*
 :::
 
 ::: proof
@@ -1757,11 +1932,10 @@ Let $\mathsf{Seq}^{\mathrm{last}}_i$ denote the most recent sequence
 identifier previously accepted by the receiving TEE enclave.
 
 Upon receiving a delegation package, the enclave verifies
-
 $$\begin{equation}
 \mathsf{Seq}_i(t)
 >
-\mathsf{Seq}^{\mathrm{last}}_i.
+\mathsf{Seq}^{\mathrm{last}}_i
 \label{eq:seq-check}
 \end{equation}$$
 
@@ -1769,33 +1943,28 @@ A package is accepted only if
 ([\[eq:seq-check\]](#eq:seq-check){reference-type="ref"
 reference="eq:seq-check"}) holds. Any replayed delegation message
 necessarily contains an outdated sequence identifier satisfying
-
 $$\begin{equation}
 \mathsf{Seq}_i(t)
 \le
-\mathsf{Seq}^{\mathrm{last}}_i,
+\mathsf{Seq}^{\mathrm{last}}_i
 \label{eq:seq-replay}
-\end{equation}$$
-
-and is therefore rejected by the enclave.
+\end{equation}$$ and is therefore rejected by the enclave.
 
 Consequently, a successful replay attack requires an adversary to either
 
-1.  forge a fresh valid sequence identifier, or
+1.  Forge a fresh valid sequence identifier
 
-2.  compromise the TEE verification mechanism.
+2.  Compromise the TEE verification mechanism
 
 Under the assumptions of secure TEE execution and unforgeable sequence
 generation, both events occur only with negligible probability.
 
-Therefore,
-
-\[ (), \]
-
-which proves replay resistance. ◻
+Therefore, $$\begin{equation}
+\Pr\big[\mathsf{Replay}_{\mathcal{A}}\big] \le \epsilon(\lambda)
+\end{equation}$$ which proves replay resistance. ◻
 :::
 
-## Theorem 6: Recovery Correctness and Fault-Loss Localization
+## Recovery Correctness and Fault-Loss Localization
 
 ::: theorem
 **Theorem 6** (Recovery Correctness and Fault-Loss Localization). *Let
@@ -1804,47 +1973,33 @@ aggregation epoch $\Delta$ and let $C_{\mathrm{agg},i}^{\mathrm{rec}}$
 denote the aggregate ciphertext produced by RMFR after recovery.*
 
 *If all missing micro-slots are successfully reconstructed, then RMFR
-preserves aggregation correctness, namely,*
-
-*$$\begin{equation}
-C_{\mathrm{agg},i}^{\mathrm{rec}}
-C_{\mathrm{agg},i}.
+preserves aggregation correctness, namely, $$\begin{equation}
+C_{\mathrm{agg},i}^{\mathrm{rec}} = C_{\mathrm{agg},i}
 \label{eq:recovery-correctness}
 \end{equation}$$*
 
 *Furthermore, under uniform micro-slot partitioning, the maximum
 aggregation-loss exposure caused by a single micro-slot failure is
-bounded by*
-
-*$$\begin{equation}
-L_{\mathrm{agg}}(m^*)
-\frac{1}{m^*},
+bounded by $$\begin{equation}
+L_{\mathrm{agg}}(m^*) \le \frac{1}{m^*}
 \label{eq:loss-bound}
-\end{equation}$$*
-
-*where $m^*$ denotes the number of adaptive micro-slots. Therefore, RMFR
-localizes recovery to the affected micro-slots and limits aggregation
-loss to at most $1/m^*$ of the aggregation epoch.*
+\end{equation}$$ where $m^*$ denotes the number of adaptive micro-slots.
+Therefore, RMFR localizes recovery to the affected micro-slots and
+limits aggregation loss to at most $1/m^*$ of the aggregation epoch.*
 :::
 
-::: proof
-*Proof.* Let
-
-$$\begin{equation}
+::::::: proof
+*Proof.* $$\begin{equation}
 D_i^{\mathrm{valid}}
-D_i
-\setminus
-D_i^{\mathrm{miss}}
+= D_i \setminus D_i^{\mathrm{miss}}
 \label{eq:valid-slots}
 \end{equation}$$
 
-denote the set of successfully aggregated micro-slots.
-
 During recovery, RMFR reconstructs only the missing micro-slot
 aggregates and computes the recovered fog-level aggregate as
-
 $$\begin{equation}
 C_{\mathrm{agg},i}^{\mathrm{rec}}
+=
 \left(
 \prod_{\delta_k\in D_i^{\mathrm{valid}}}
 C_{\mathrm{micro},k}
@@ -1852,85 +2007,65 @@ C_{\mathrm{micro},k}
 \left(
 \prod_{\delta_k\in D_i^{\mathrm{miss}}}
 C_{\mathrm{micro},k}^{\mathrm{rec}}
-\right).
+\right)
 \label{eq:recovered-aggregate}
 \end{equation}$$
 
 If recovery is successful, then every reconstructed micro-slot aggregate
-satisfies
-
-$$\begin{equation}
-C_{\mathrm{micro},k}^{\mathrm{rec}}
-C_{\mathrm{micro},k},
+satisfies $$\begin{equation}
+C_{\mathrm{micro},k}^{\mathrm{rec}} = C_{\mathrm{micro},k},
 \qquad
-\forall \delta_k \in D_i^{\mathrm{miss}}.
+\forall \delta_k \in D_i^{\mathrm{miss}}
 \label{eq:slot-equivalence}
 \end{equation}$$
 
 Substituting
-([\[eq:slot-equivalence\]](#eq:slot-equivalence){reference-type="ref"
-reference="eq:slot-equivalence"}) into
-([\[eq:recovered-aggregate\]](#eq:recovered-aggregate){reference-type="ref"
-reference="eq:recovered-aggregate"}) yields
-
-$$\begin{equation}
+Eq. [\[eq:slot-equivalence\]](#eq:slot-equivalence){reference-type="eqref"
+reference="eq:slot-equivalence"} into
+Eq. [\[eq:recovered-aggregate\]](#eq:recovered-aggregate){reference-type="eqref"
+reference="eq:recovered-aggregate"} yields $$\begin{equation}
 C_{\mathrm{agg},i}^{\mathrm{rec}}
+=
 \prod_{k=1}^{m^*}
 C_{\mathrm{micro},k}
-C_{\mathrm{agg},i},
+=
+C_{\mathrm{agg},i}
 \label{eq:aggregate-equivalence}
-\end{equation}$$
-
-which proves recovery correctness.
+\end{equation}$$ which proves recovery correctness.
 
 To analyze fault-loss localization, consider an aggregation epoch
 partitioned into $m^*$ equally sized micro-slots. Each micro-slot
-contributes
-
-$$\begin{equation}
+contributes $$\begin{equation}
 \frac{1}{m^*}
 \label{eq:slot-fraction}
-\end{equation}$$
-
-of the aggregation interval.
+\end{equation}$$ of the aggregation interval.
 
 Therefore, failure of a single micro-slot affects at most
-
 $$\begin{equation}
 L_{\mathrm{agg}}(m^*)
 \frac{1}{m^*}
 \label{eq:localized-loss}
-\end{equation}$$
-
-of the aggregation epoch.
+\end{equation}$$ of the aggregation epoch.
 
 Unlike conventional flat aggregation, where a late-stage failure may
 invalidate the entire aggregation window, RMFR recomputes only the
 affected micro-slots while preserving all valid aggregation results.
-Consequently, the recovery complexity scales with
-
-$$\begin{equation}
+Consequently, the recovery complexity scales with $$\begin{equation}
 \mathcal{O}
 !\left(
 |D_i^{\mathrm{miss}}|
 \right)
 \label{eq:recovery-complexity}
-\end{equation}$$
-
-rather than
-
-$$\begin{equation}
-\mathcal{O}(m^*),
+\end{equation}$$ rather than $$\begin{equation}
+\mathcal{O}(m^*)
 \label{eq:full-recovery}
-\end{equation}$$
-
-thereby reducing recovery overhead and improving system resilience.
+\end{equation}$$ thereby reducing recovery overhead and improving system
+resilience.
 
 Hence, RMFR guarantees both aggregation correctness and localized fault
-recovery. ◻
-:::
+recovery.
 
-## Theorem 7: Availability Improvement
+## Availability Improvement
 
 ::: theorem
 **Theorem 7** (Availability Improvement). *Let $P_{\mathrm{dis}}$ denote
@@ -1939,16 +2074,16 @@ communication failure, or fog-node failure.*
 
 *Under identical operating conditions, the proposed PLOSHA-RMFR
 framework achieves lower aggregation-loss exposure and higher service
-availability than conventional flat aggregation systems. Specifically,*
-
-*$$\begin{equation}
+availability than conventional flat aggregation systems. Specifically,
+$$\begin{equation}
 L_{\mathrm{PLOSHA}}
 \frac{1}{m^*}
 <
-L_{\mathrm{flat}},
+L_{\mathrm{flat}}
 \label{eq:availability-loss}
-\end{equation}$$ where \[ L\_ = 1 \] and $m^*>1$ is the adaptive number
-of micro-slots.*
+\end{equation}$$ where $$\begin{equation}
+L_{\mathrm{flat}} = 1
+\end{equation}$$ and $m^*>1$ is the adaptive number of micro-slots.*
 :::
 
 ::: proof
@@ -1958,10 +2093,8 @@ aggregation unit.
 
 Consequently, if a failure occurs before the aggregation process
 completes, the entire aggregation epoch becomes unavailable. The
-corresponding aggregation-loss exposure is
-
-$$\begin{equation}
-L_{\mathrm{flat}}1.
+corresponding aggregation-loss exposure is $$\begin{equation}
+L_{\mathrm{flat}}=1
 \label{eq:flat-loss}
 \end{equation}$$
 
@@ -1970,37 +2103,29 @@ micro-slots and performs hierarchical aggregation over individual
 micro-slot aggregates.
 
 From Theorem 6, the maximum aggregation-loss exposure caused by a single
-micro-slot failure is bounded by
-
-$$\begin{equation}
+micro-slot failure is bounded by $$\begin{equation}
 L_{\mathrm{PLOSHA}}
-\frac{1}{m^*}.
+\frac{1}{m^*}
 \label{eq:plosha-loss}
 \end{equation}$$
 
-Since
-
-$$\begin{equation}
-m^* > 1,
+Since $$\begin{equation}
+m^* > 1
 \label{eq:micro-slot-condition}
-\end{equation}$$
-
-it follows directly that
-
-$$\begin{equation}
+\end{equation}$$ it follows directly that $$\begin{equation}
 L_{\mathrm{PLOSHA}}
 <
-L_{\mathrm{flat}}.
+L_{\mathrm{flat}}
 \label{eq:loss-comparison}
 \end{equation}$$
 
 Furthermore, RMFR employs a progressive recovery strategy consisting of:
 
-1.  predictive delegation for anticipated overloads;
+1.  Predictive delegation for anticipated overloads
 
-2.  selective micro-slot recovery for incomplete aggregation;
+2.  Selective micro-slot recovery for incomplete aggregation
 
-3.  reliability-aware failover for unavailable fog nodes.
+3.  Reliability-aware failover for unavailable fog nodes
 
 These mechanisms reduce the probability that a disruption results in
 complete aggregation failure. Let $P_{\mathrm{dis}}^{\mathrm{RMFR}}$ and
@@ -2009,12 +2134,12 @@ of PLOSHA-RMFR and a conventional flat aggregation framework,
 respectively.
 
 Because RMFR provides proactive delegation, localized recovery, and
-failover continuity,
+failover continuity
 
 $$\begin{equation}
 P_{\mathrm{dis}}^{\mathrm{RMFR}}
 <
-P_{\mathrm{dis}}^{\mathrm{flat}}.
+P_{\mathrm{dis}}^{\mathrm{flat}}
 \label{eq:availability-prob}
 \end{equation}$$
 
@@ -2023,27 +2148,32 @@ and service-disruption probability, resulting in improved operational
 availability. ◻
 :::
 
-## Theorem 8: Stability of AFLTO Optimization
+## Stability of AFLTO Optimization
 
 ::: theorem
 **Theorem 8** (Bounded Stability of AFLTO). *Let $\tau_x(t)$ denote any
-adaptive threshold maintained by the AFLTO module, where*
-
-*\[ \_x \_v, \_r, \_1, \_2, \_3, \_f . \]*
-
-*Assume that the feedback error $e_i(t)$ is bounded such that*
-
-*$$\begin{equation}
-|e_i(t)|
-\le
-e_{\max},
-\label{eq:error-bound}
+adaptive threshold maintained by the AFLTO module, where
+$$\begin{equation}
+\tau_x
+\in
+{
+\tau_v,
+\tau_r,
+\tau_1,
+\tau_2,
+\tau_3,
+\tau_f
+}
 \end{equation}$$*
 
-*and that the learning rate satisfies*
-
-*$$\begin{equation}
-0 < \mu_x < 1.
+*Assume that the feedback error $e_i(t)$ is bounded such that
+$$\begin{equation}
+|e_i(t)|
+\le
+e_{\max}
+\label{eq:error-bound}
+\end{equation}$$ and that the learning rate satisfies $$\begin{equation}
+0 < \mu_x < 1
 \label{eq:learning-rate}
 \end{equation}$$*
 
@@ -2052,49 +2182,38 @@ and converge toward a stable operating region without divergence.*
 :::
 
 ::: proof
-*Proof.* The AFLTO update rule is defined as
-
-$$\begin{equation}
+*Proof.* The AFLTO update rule is defined as $$\begin{equation}
 \tau_x(t+1)
-\Pi_{[0,1]}
-!\left(
+=
+\Pi_{[0,1]}\!\left(
 \tau_x(t)
 +
 \mu_x e_i(t)
-\right),
+\right)
 \label{eq:aflto-update}
 \end{equation}$$
 
-where
-
-$$\begin{equation}
+where the projection operator is defined as $$\begin{equation}
 \Pi_{[0,1]}(y)
-\min
-\left{
-1,
-\max
-\left(
-0,
-y
-\right)
-\right}
+=
+\min\left\{
+1,\,
+\max\left(0,\, y\right)
+\right\}
 \label{eq:projection}
-\end{equation}$$
+\end{equation}$$ denotes the projection onto the closed interval
+$[0,1]$. ◻
+:::
 
-denotes the projection operator onto the closed interval $[0,1]$.
-
-By definition of the projection operator,
-
-$$\begin{equation}
+By definition of the projection operator, $$\begin{equation}
 0
 \le
 \tau_x(t+1)
 \le
 1
 \label{eq:bounded-threshold}
-\end{equation}$$
-
-for every iteration $t$, regardless of the value of $e_i(t)$.
+\end{equation}$$ for every iteration $t$, regardless of the value of
+$e_i(t)$.
 
 Therefore, the threshold sequence cannot diverge outside the feasible
 operating range.
@@ -2104,12 +2223,10 @@ Furthermore, from
 reference="eq:error-bound"}) and
 ([\[eq:aflto-update\]](#eq:aflto-update){reference-type="ref"
 reference="eq:aflto-update"}), the maximum threshold variation between
-two consecutive iterations satisfies
-
-$$\begin{equation}
+two consecutive iterations satisfies $$\begin{equation}
 |\tau_x(t+1)-\tau_x(t)|
 \le
-\mu_x e_{\max}.
+\mu_x e_{\max}
 \label{eq:update-bound}
 \end{equation}$$
 
@@ -2117,24 +2234,21 @@ Since both $\mu_x$ and $e_{\max}$ are finite, threshold updates remain
 bounded and cannot exhibit unbounded growth.
 
 AFLTO additionally enforces the recovery-escalation ordering
-
 $$\begin{equation}
 \tau_1
 <
 \tau_2
 <
-\tau_3,
+\tau_3
 \label{eq:threshold-order}
-\end{equation}$$
-
-which guarantees consistent transition among predictive delegation,
-localized recovery, and failover recovery modes.
+\end{equation}$$ which guarantees consistent transition among predictive
+delegation, localized recovery, and failover recovery modes.
 
 Consequently, all adaptive thresholds remain bounded, non-divergent, and
 operationally consistent throughout long-term system execution.
 
 Hence, AFLTO achieves bounded stability. ◻
-:::
+:::::::
 
 This section evaluates the efficiency, scalability, and fault-resilience
 of the proposed PLOSHA-RMFR framework. The evaluation consists of three
@@ -2340,8 +2454,6 @@ proportional to $|D_i^{miss}|$ rather than the full aggregation window
 size $m^{*}$. Consequently, PLOSHA-RMFR achieves lower communication
 overhead while maintaining secure aggregation, adaptive coordination,
 and fault resilience in large-scale IIoT edge--fog environments.
-
-"'latex
 
 ## Performance Analysis {#subsec:performance-analysis}
 
@@ -2597,18 +2709,14 @@ is exposed when a failure occurs.
 
 The results further show that aggregation-loss exposure decreases as the
 number of micro-slots increases. According to the PAHSA design, the
-maximum loss exposure is bounded by
-
-$$L_{\mathrm{PLOSHA}}
+maximum loss exposure is bounded by $$L_{\mathrm{PLOSHA}}
 =
-\frac{1}{m^{*}},$$
-
-where $m^{*}$ denotes the number of adaptive micro-slots. Therefore,
-increasing $m^{*}$ improves fault isolation and reduces the amount of
-aggregation data affected by individual failures. These results confirm
-that the proposed hierarchical aggregation architecture significantly
-improves aggregation resilience and minimizes the impact of failures in
-large-scale IIoT environments.
+\frac{1}{m^{*}}$$ where $m^{*}$ denotes the number of adaptive
+micro-slots. Therefore, increasing $m^{*}$ improves fault isolation and
+reduces the amount of aggregation data affected by individual failures.
+These results confirm that the proposed hierarchical aggregation
+architecture significantly improves aggregation resilience and minimizes
+the impact of failures in large-scale IIoT environments.
 
 ### **Experiment 6: Recovery Communication Overhead** {#experiment-6-recovery-communication-overhead .unnumbered}
 
