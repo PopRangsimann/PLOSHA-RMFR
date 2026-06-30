@@ -5,6 +5,9 @@ Proactively predicts the future operating condition of each fog node
 using EWMA-based prediction to support adaptive aggregation planning
 and risk-aware recovery.
 
+Gramine-SGX Edition — Capacity formula includes Rel_hat factor,
+risk uses η_1/η_2 weights per Experiment Plan §4, Table 3.
+
 Paper Reference: Section III-C, Phase II (7 Steps)
   Step 1: Runtime State Collection
   Step 2: Future State Prediction (EWMA)
@@ -83,13 +86,18 @@ def _predict_single_node(config: SystemConfig, fog: FogNode) -> dict:
 
     # =========================================================================
     # Step 3: Effective Aggregation Capacity Estimation
-    # Cap_i(t+1) = 1 - (ω_w · Ŵ_i + ω_q · Q̂_i + ω_l · L̂_i)
+    # Cap_i(t+1) = R̂el_i(t+1) · (1 - (ω_w · Ŵ_i + ω_q · Q̂_i + ω_l · L̂_i))
     # subject to ω_w + ω_q + ω_l = 1
+    #
+    # Experiment Plan §4, Table 3:
+    #   Cap = Rel_hat * (1 - (ow*W_hat + oq*Q_hat + ol*L_hat))
+    #
     # "A larger value indicates greater available processing resources"
     # =========================================================================
-    cap = 1.0 - (config.omega_w * W_hat +
-                  config.omega_q * Q_hat +
-                  config.omega_l * L_hat)
+    load_factor = (config.omega_w * W_hat +
+                   config.omega_q * Q_hat +
+                   config.omega_l * L_hat)
+    cap = R_hat * (1.0 - load_factor)
     cap = max(0.0, min(1.0, cap))  # Ensure 0 ≤ Cap ≤ 1
     fog.cap = cap
 
@@ -106,12 +114,12 @@ def _predict_single_node(config: SystemConfig, fog: FogNode) -> dict:
 
     # =========================================================================
     # Step 5: Operational Risk Estimation
-    # Risk_i(t) = γ_1 · (1 - Cap_i(t+1)) + γ_2 · FE_i(t)
-    # subject to γ_1 + γ_2 = 1
+    # Risk_i(t) = η_1 · (1 - Cap_i(t+1)) + η_2 · FE_i(t)
+    # subject to η_1 + η_2 = 1
     # "A larger value indicates approaching overload, instability, or
     #  service degradation"
     # =========================================================================
-    risk = config.gamma_1 * (1.0 - cap) + config.gamma_2 * fe
+    risk = config.eta_1 * (1.0 - cap) + config.eta_2 * fe
     risk = max(0.0, min(1.0, risk))  # Ensure 0 ≤ Risk ≤ 1
     fog.risk = risk
 

@@ -1,20 +1,26 @@
 """
-Trusted Execution Environment (TEE) Simulation Module
-======================================================
-Simulates TEE enclave operations for secure ciphertext transformation,
-digital signing, and attestation.
+Trusted Execution Environment (TEE) Module — Gramine-SGX Edition
+==================================================================
+Simulates TEE enclave operations using ECDSA (not HMAC) for signing,
+matching the Gramine-SGX path described in Experiment Plan §5.4.
+
+Gramine runs an unmodified CPython interpreter inside an SGX enclave,
+so the same tee_sign() / tee_verify() module is plain Python whether
+it executes outside the enclave (for local testing) or inside it
+(for the real measurements under 'gramine-sgx python3 tee_sign.py').
 
 Paper Reference:
   - Phase I, Step 1: Attest(F_i) = 1 for TEE attestation
   - Phase III, Step 3: TEE transforms AES ciphertext → Paillier ciphertext
-    d_j = Dec_{k_i}(CT_j), then C_j = Enc_{pk_P}(d_j)
-    Plaintext exists only transiently within the protected enclave
   - Phase V, Step 1: σ_i(t) = Sign_{sk_i^TEE}(H(T_i(t)))
+  - §5.4: ECDSA with cryptography.hazmat.primitives
 """
 
 import hashlib
-import hmac
 import os
+
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import hashes, serialization
 
 from src.crypto import aes_gcm
 from src.crypto import paillier
@@ -24,10 +30,12 @@ class TEEEnclave:
     """
     Simulated Trusted Execution Environment (TEE) enclave.
 
+    Gramine-SGX Edition: uses ECDSA-P256 for signing (not HMAC).
+
     Provides:
     - Remote attestation
     - Ciphertext transformation (AES → Paillier)
-    - Digital signing within the enclave
+    - ECDSA digital signing within the enclave
     - Isolated key storage
     """
 
@@ -40,8 +48,9 @@ class TEEEnclave:
         """
         self.node_id = node_id
         self.attested = False
-        # TEE signing key (generated during attestation)
-        self._signing_key = None
+        # TEE ECDSA key pair (generated during attestation)
+        self._private_key = None
+        self._public_key = None
         # Fog-scoped AES key (provisioned by KRM)
         self._aes_key = None
         # Paillier public key (provisioned by KRM)
@@ -57,9 +66,11 @@ class TEEEnclave:
             True if attestation succeeds (Attest(F_i) = 1).
 
         Paper: Phase I, Step 1 - Fog node admitted only if Attest(F_i) = 1
+        §5.4: "signing key is sealed to the enclave"
         """
-        # Generate enclave signing key upon successful attestation
-        self._signing_key = os.urandom(32)
+        # Generate ECDSA key pair upon successful attestation
+        self._private_key = ec.generate_private_key(ec.SECP256R1())
+        self._public_key = self._private_key.public_key()
         self.attested = True
         return True
 
@@ -99,7 +110,7 @@ class TEEEnclave:
         if not self.attested or self._aes_key is None:
             raise RuntimeError("TEE not properly initialized")
 
-        # Step 1: Decrypt AES ciphertext inside enclave
+        # Step 1: Decrypt AES ciphertext inside enclave → integer d_j
         plaintext_value = aes_gcm.decrypt(self._aes_key, aes_ciphertext)
 
         # Step 2: Encrypt with Paillier inside enclave
@@ -111,7 +122,7 @@ class TEEEnclave:
 
     def sign(self, data: bytes) -> bytes:
         """
-        Generate a digital signature inside the TEE enclave.
+        Generate an ECDSA digital signature inside the TEE enclave.
 
         σ_i(t) = Sign_{sk_i^TEE}(H(T_i(t)))
 
@@ -119,27 +130,33 @@ class TEEEnclave:
             data: Data to sign (typically H(T_i(t))).
 
         Returns:
-            HMAC-SHA256 signature bytes.
+            ECDSA-P256 signature bytes (DER-encoded).
 
         Paper: Phase V, Step 1 - Enclave signs aggregation commitment
+        §5.4: private_key.sign(payload, ec.ECDSA(hashes.SHA256()))
         """
-        if not self.attested or self._signing_key is None:
+        if not self.attested or self._private_key is None:
             raise RuntimeError("TEE not attested — cannot sign")
-        return hmac.new(self._signing_key, data, hashlib.sha256).digest()
+        return self._private_key.sign(data, ec.ECDSA(hashes.SHA256()))
 
     def verify_signature(self, data: bytes, signature: bytes) -> bool:
         """
-        Verify a TEE-generated signature.
+        Verify an ECDSA signature using the enclave's public key.
 
         Args:
             data: Original data that was signed.
-            signature: Signature to verify.
+            signature: DER-encoded ECDSA signature to verify.
 
         Returns:
             True if signature is valid.
+
+        Paper: §5.4 - public_key.verify(signature, payload, ec.ECDSA(hashes.SHA256()))
         """
-        expected = self.sign(data)
-        return hmac.compare_digest(expected, signature)
+        try:
+            self._public_key.verify(signature, data, ec.ECDSA(hashes.SHA256()))
+            return True
+        except Exception:
+            return False
 
     def check_sequence(self, seq: int) -> bool:
         """
@@ -160,13 +177,52 @@ class TEEEnclave:
             return True
         return False
 
-    def get_public_verification_key(self) -> bytes:
-        """Return the public portion of the signing key for verification."""
+    def get_public_verification_key(self):
+        """Return the ECDSA public key for external verification.
+
+        Paper: §5.4 - "Verify at the cloud side using the enclave's public key."
+        """
         if not self.attested:
             raise RuntimeError("TEE not attested")
-        # In simulation, HMAC uses symmetric key. In practice this would
-        # be an asymmetric verification key.
-        return self._signing_key
+        return self._public_key
+
+
+# =========================================================================
+# Module-level convenience functions (§5.4 — identical inside/outside enclave)
+# =========================================================================
+
+def tee_sign(payload: bytes, private_key) -> bytes:
+    """Sign payload with an EC private key (replaces OP-TEE TA call).
+
+    Paper §5.4: "private_key.sign(payload, ec.ECDSA(hashes.SHA256()))"
+    """
+    return private_key.sign(payload, ec.ECDSA(hashes.SHA256()))
+
+
+def tee_verify(payload: bytes, signature: bytes, public_key) -> bool:
+    """Verify at the cloud side using the enclave's public key.
+
+    Paper §5.4: "public_key.verify(signature, payload, ec.ECDSA(hashes.SHA256()))"
+    """
+    try:
+        public_key.verify(signature, payload, ec.ECDSA(hashes.SHA256()))
+        return True
+    except Exception:
+        return False
+
+
+def get_sgx_quote(report_data: bytes) -> bytes:
+    """Simulate SGX quote retrieval.
+
+    In a real Gramine-SGX environment this reads /dev/attestation/quote.
+    In simulation, we return a deterministic placeholder derived from
+    the report data so the rest of the pipeline can proceed.
+
+    Paper §5.4: "Read the SGX quote Gramine exposes at /dev/attestation"
+    """
+    # Simulation stub: hash the report data to produce a deterministic
+    # "quote" of the expected size.  No real attestation happens here.
+    return hashlib.sha256(b"SGX_QUOTE_SIM:" + report_data).digest()
 
 
 def compute_hash(data_tuple: tuple) -> bytes:

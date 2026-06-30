@@ -4,6 +4,9 @@ Phase V: Adaptive Feedback Learning and Threshold Optimization (AFLTO)
 Securely commits the final aggregation result and continuously refines
 operational parameters through closed-loop optimization.
 
+Gramine-SGX Edition — separates γ (decay) from α_h (blend), uses
+κ_1/κ_2/κ_3 error weights, S̄ = 0.95, margin = 0.01.
+
 Paper Reference: Section III-C, Phase V (5 Steps)
   Step 1: Final Aggregate Commitment
   Step 2: Performance Evaluation
@@ -70,7 +73,7 @@ def execute(config: SystemConfig, fog_node: FogNode,
         'recovery_status': recovery_status
     }
 
-    # Sign inside TEE enclave
+    # Sign inside TEE enclave (Gramine-SGX ECDSA)
     hash_data = compute_hash((
         str(final_aggregate),
         str(rec_output['mode']),
@@ -109,25 +112,32 @@ def execute(config: SystemConfig, fog_node: FogNode,
 
     # =========================================================================
     # Step 3: Historical Learning and Error Estimation
-    # Hist_i(t+1) = γ_h·Hist_i(t) + (1-γ_h)·Score_i(t)
-    # Score_i*(t) = γ_h·Hist_i(t+1) + (1-γ_h)·Score_i(t)
-    # e_i(t) = ε_1·(S_target - Score_i*) + ε_2·RU_i + ε_3·(1-Rel_i(t+1))
-    # subject to ε_1 + ε_2 + ε_3 = 1
+    #
+    # Experiment Plan §7, Table 6:
+    #   Hist_i(t+1) = γ · Hist_i(t) + (1-γ) · Score_i(t)
+    #   Score_i*(t) = α_h · Hist_i(t+1) + (1-α_h) · Score_i(t)
+    #
+    # γ = gamma_decay (default 0.9) — history decay factor
+    # α_h = alpha_hist (default 0.3) — history blend factor
+    # These are SEPARATE parameters, not conflated.
+    #
+    # e_i(t) = κ_1·(S̄ - Score_i*) + κ_2·RU_i + κ_3·(1-Rel_i(t+1))
+    # subject to κ_1 + κ_2 + κ_3 = 1
     # =========================================================================
 
     # Update historical performance profile
-    hist = (config.gamma_hist * fog_node.history_score +
-            (1.0 - config.gamma_hist) * score)
+    hist = (config.gamma_decay * fog_node.history_score +
+            (1.0 - config.gamma_decay) * score)
     fog_node.history_score = hist
 
-    # Fused current-historical score
-    score_star = config.gamma_hist * hist + (1.0 - config.gamma_hist) * score
+    # Fused current-historical score (uses alpha_hist, not gamma_decay)
+    score_star = config.alpha_hist * hist + (1.0 - config.alpha_hist) * score
 
-    # Adaptive control error
+    # Adaptive control error (uses kappa weights)
     ru = rec_output['recovery_urgency']
-    error = (config.epsilon_1 * (config.s_target - score_star) +
-             config.epsilon_2 * ru +
-             config.epsilon_3 * (1.0 - new_reliability))
+    error = (config.kappa_1 * (config.s_target - score_star) +
+             config.kappa_2 * ru +
+             config.kappa_3 * (1.0 - new_reliability))
     fog_node.control_error = error
 
     # =========================================================================
@@ -135,7 +145,7 @@ def execute(config: SystemConfig, fog_node: FogNode,
     # τ_x(t+1) = Π_{[0,1]}(τ_x(t) + μ_x · e_i(t))
     # for x ∈ {v, r, 1, 2, 3, f}
     #
-    # Π_{[0,1]}(y) = min{1, max(0, y)}  (projection operator)
+    # Π_{[0,1]}(y) = min{1, max(0, y}}  (projection operator)
     #
     # Enforce ordering: τ_1(t+1) < τ_2(t+1) < τ_3(t+1)
     #
@@ -179,7 +189,7 @@ def execute(config: SystemConfig, fog_node: FogNode,
 
 def _project(value: float) -> float:
     """
-    Projection operator Π_{[0,1]}(y) = min{1, max(0, y)}.
+    Projection operator Π_{[0,1]}(y) = min{1, max{0, y}}.
 
     Ensures all thresholds remain bounded within [0, 1].
 
@@ -193,31 +203,36 @@ def _enforce_threshold_ordering(config: SystemConfig):
     """
     Enforce recovery escalation ordering: τ_1 < τ_2 < τ_3.
 
+    Uses config.threshold_margin (default 0.01 per plan §7.2).
+
     Paper: Phase V, Step 4
     "The ordering constraint τ_1(t+1) < τ_2(t+1) < τ_3(t+1) is
      enforced after each update cycle to preserve recovery-escalation
      consistency."
+
+    Experiment Plan §7.2:
+        tau1 = min(tau1, tau2 - margin)
+        tau2 = max(tau2, tau1 + margin)
+        tau2 = min(tau2, tau3 - margin)
+        tau3 = max(tau3, tau2 + margin)
     """
-    min_gap = 0.05  # Minimum separation between thresholds
+    margin = config.threshold_margin
 
-    # Ensure τ_1 < τ_2
-    if config.tau_2 <= config.tau_1 + min_gap:
-        config.tau_2 = min(1.0, config.tau_1 + min_gap)
+    # Clamp each to [0, 1] first
+    config.tau_1 = _project(config.tau_1)
+    config.tau_2 = _project(config.tau_2)
+    config.tau_3 = _project(config.tau_3)
 
-    # Ensure τ_2 < τ_3
-    if config.tau_3 <= config.tau_2 + min_gap:
-        config.tau_3 = min(1.0, config.tau_2 + min_gap)
-
-    # If ordering still violated due to clamping, adjust downward
-    if config.tau_3 > 1.0:
-        config.tau_3 = 1.0
-        config.tau_2 = min(config.tau_2, config.tau_3 - min_gap)
-        config.tau_1 = min(config.tau_1, config.tau_2 - min_gap)
+    # Enforce ordering with margin
+    config.tau_1 = min(config.tau_1, config.tau_2 - margin)
+    config.tau_2 = max(config.tau_2, config.tau_1 + margin)
+    config.tau_2 = min(config.tau_2, config.tau_3 - margin)
+    config.tau_3 = max(config.tau_3, config.tau_2 + margin)
 
     # Final clamp
-    config.tau_1 = max(0.0, config.tau_1)
-    config.tau_2 = max(config.tau_1 + min_gap, config.tau_2)
-    config.tau_3 = max(config.tau_2 + min_gap, config.tau_3)
+    config.tau_1 = _project(config.tau_1)
+    config.tau_2 = _project(config.tau_2)
+    config.tau_3 = _project(config.tau_3)
 
 
 def execute_static(config: SystemConfig, fog_node: FogNode,
@@ -259,15 +274,15 @@ def execute_static(config: SystemConfig, fog_node: FogNode,
              config.omega_score_2 * new_reliability)
     fog_node.quality_score = max(0.0, min(1.0, score))
 
-    # Step 3: History (still track)
-    hist = (config.gamma_hist * fog_node.history_score +
-            (1.0 - config.gamma_hist) * score)
+    # Step 3: History (still track, using separated γ and α_h)
+    hist = (config.gamma_decay * fog_node.history_score +
+            (1.0 - config.gamma_decay) * score)
     fog_node.history_score = hist
-    score_star = config.gamma_hist * hist + (1.0 - config.gamma_hist) * score
+    score_star = config.alpha_hist * hist + (1.0 - config.alpha_hist) * score
     ru = rec_output['recovery_urgency']
-    error = (config.epsilon_1 * (config.s_target - score_star) +
-             config.epsilon_2 * ru +
-             config.epsilon_3 * (1.0 - new_reliability))
+    error = (config.kappa_1 * (config.s_target - score_star) +
+             config.kappa_2 * ru +
+             config.kappa_3 * (1.0 - new_reliability))
     fog_node.control_error = error
 
     # Step 4: SKIPPED — thresholds remain static

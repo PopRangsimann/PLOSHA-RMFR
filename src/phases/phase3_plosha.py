@@ -5,6 +5,9 @@ Performs privacy-preserving aggregation of sensor readings while
 dynamically adapting aggregation structure according to predicted
 operating conditions.
 
+Gramine-SGX Edition — m* objective uses Cap/FE/Rel interaction terms
+per Experiment Plan §5.1.  Sensor readings are integers.
+
 Paper Reference: Section III-C, Phase III (7 Steps)
   Step 1: Prediction-Driven Aggregation Planning (optimal m*)
   Step 2: Adaptive Epoch Partitioning
@@ -15,10 +18,9 @@ Paper Reference: Section III-C, Phase III (7 Steps)
   Step 7: Aggregation Output
 """
 
-import math
 import random
 import time
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict
 
 from src.config import SystemConfig
 from src.entities.sensor import Sensor
@@ -55,18 +57,19 @@ def execute(config: SystemConfig, fog_node: FogNode,
     # Step 1: Prediction-Driven Aggregation Planning
     # Receive Pred_i(t) = [Cap_i(t+1), FE_i(t), Risk_i(t)]
     #
-    # Optimal m* = argmin_{1≤m≤m_max} [φ_1·T_proc(m) + φ_2·L_agg(m) + φ_3·(1-Rel_i)]
-    # where:
-    #   T_proc(m) = β_t · m           (processing overhead)
-    #   L_agg(m)  = 1/m               (aggregation-loss exposure)
-    # Constraint: φ_1 + φ_2 + φ_3 = 1
+    # Experiment Plan §5.1:
+    # m* = argmin_{1≤m≤m_max} [
+    #   λ_1 · β_t · m · (1 - Cap) +
+    #   λ_2 · FE · (1/m) +
+    #   λ_3 · (1 - Rel) · (1/m)
+    # ]
     # =========================================================================
     cap = fog_node.cap
     fe = fog_node.failure_exposure
     risk = fog_node.risk
     rel = fog_node.reliability
 
-    m_star = _compute_optimal_microslots(config, cap, fe, risk, rel)
+    m_star = _compute_optimal_microslots(config, cap, fe, rel)
     fog_node.optimal_m = m_star
 
     # Accumulate simulated timing
@@ -84,7 +87,7 @@ def execute(config: SystemConfig, fog_node: FogNode,
     # =========================================================================
     # Step 3: Secure Data Collection and Ciphertext Transformation
     # For each sensor S_j:
-    #   CT_j = Enc_{k_i}(d_j)         — AES-GCM at sensor
+    #   CT_j = Enc_{k_i}(d_j)         — AES-GCM at sensor (integer d_j)
     #   TEE: d_j = Dec_{k_i}(CT_j)    — Decrypt inside enclave
     #   TEE: C_j = Enc_{pk_P}(d_j)    — Paillier encrypt inside enclave
     #   Erase d_j                       — Plaintext transient only
@@ -196,11 +199,19 @@ def execute(config: SystemConfig, fog_node: FogNode,
 
 def _compute_optimal_microslots(config: SystemConfig,
                                  cap: float, fe: float,
-                                 risk: float, rel: float) -> int:
+                                 rel: float) -> int:
     """
     Compute optimal micro-slot number m*.
 
-    m* = argmin_{1≤m≤m_max} [φ_1·β_t·m + φ_2/m + φ_3·(1-Rel_i)]
+    Experiment Plan §5.1:
+        T_agg = β_t · m
+        L_agg = 1/m
+        obj = λ_1 · T_agg · (1 - Cap)
+            + λ_2 · FE   · L_agg
+            + λ_3 · (1 - Rel) · L_agg
+
+    All weights (λ_1, λ_2, λ_3) and β_t come from config.
+    m* is deterministic given the same prediction inputs.
 
     Paper: Phase III, Step 1
     - T_proc(m) = β_t · m  (processing overhead, linear in m)
@@ -213,18 +224,15 @@ def _compute_optimal_microslots(config: SystemConfig,
 
     for m in range(1, config.m_max + 1):
         # Processing overhead: linear in m
-        t_proc = config.beta_t * m
+        t_agg = config.beta_t * m
 
         # Aggregation-loss exposure: inversely proportional to m
         l_agg = 1.0 / m
 
-        # Reliability penalty
-        rel_penalty = 1.0 - rel
-
-        # Objective: weighted sum
-        cost = (config.phi_1 * t_proc +
-                config.phi_2 * l_agg +
-                config.phi_3 * rel_penalty)
+        # Objective: weighted sum with Cap/FE/Rel interaction terms
+        cost = (config.lambda_m1 * t_agg * (1.0 - cap) +
+                config.lambda_m2 * fe * l_agg +
+                config.lambda_m3 * (1.0 - rel) * l_agg)
 
         if cost < best_cost:
             best_cost = cost
@@ -265,8 +273,9 @@ def _collect_and_transform_simulated(config: SystemConfig,
     """
     Simulated data collection and transformation (no real crypto).
 
-    Generates random sensor values and computes sums directly.
-    Uses timing model for latency estimation.
+    Generates random integer sensor values in [0, max_sensor_value]
+    and computes sums directly. Uses timing model for latency estimation.
+    No hardcoded bias — sensor values are uniform random integers.
 
     Paper: Phase III, Step 3
     """
@@ -276,7 +285,8 @@ def _collect_and_transform_simulated(config: SystemConfig,
         for sid in slot_sensors:
             # Simulate sensor reading and possible drop
             if random.random() > config.sensor_drop_rate:
-                value = random.gauss(75.0, 5.0)  # Temperature reading
+                # Integer sensor reading d_j ∈ [0, max_sensor_value] (§3.1)
+                value = random.randint(0, config.max_sensor_value)
                 values.append(value)
                 # Timing: AES encrypt + TEE transform + Paillier encrypt
                 fog_node.epoch_agg_time += (config.t_aes + config.t_tee +
@@ -284,7 +294,7 @@ def _collect_and_transform_simulated(config: SystemConfig,
 
         slot_data.append({
             'values': values,
-            'sum': sum(values) if values else 0.0,
+            'sum': sum(values) if values else 0,
             'count': len(values)
         })
 
@@ -313,8 +323,8 @@ def _collect_and_transform_real(config: SystemConfig,
         values = []
         for sid in slot_sensors:
             if random.random() > config.sensor_drop_rate:
-                # Generate and encrypt sensor reading
-                value = random.gauss(75.0, 5.0)
+                # Generate integer sensor reading (§3.1)
+                value = random.randint(0, config.max_sensor_value)
                 ct_aes = aes_gcm.encrypt(aes_key, value)
 
                 # TEE ciphertext transformation
@@ -325,7 +335,7 @@ def _collect_and_transform_real(config: SystemConfig,
         slot_data.append({
             'ciphertexts': ciphertexts,
             'values': values,
-            'sum': sum(values) if values else 0.0,
+            'sum': sum(values) if values else 0,
             'count': len(values)
         })
 

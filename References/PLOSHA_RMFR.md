@@ -390,7 +390,7 @@ The adversary may attempt to:
 4.  Trigger repeated recovery operations to increase system overhead
 
 5.  Manipulate workload-distribution decisions through falsified status
-    information;
+    information
 
 6.  Disrupt aggregation by causing node failures during active
     aggregation epochs
@@ -615,9 +615,7 @@ Cap_i(t+1)
 \bigr)
 \Bigr]
 \end{aligned}
-\end{equation}$$
-
-subject to $$\begin{equation}
+\end{equation}$$ subject to $$\begin{equation}
 \omega_w+\omega_q+\omega_l=1,
 \qquad
 \omega_w,\omega_q,\omega_l\in[0,1]
@@ -722,8 +720,6 @@ aggregation-loss exposure, and improves resilience against overloads and
 fog-node failures.
 
 **Step 1: Prediction-Driven Aggregation Planning**
-
-Step 1: Prediction-Driven Aggregation Planning
 
 For each fog node $F_i$, PLOSHA receives the prediction vector
 $\mathbf{Pred}_i(t)$, which summarizes the anticipated aggregation

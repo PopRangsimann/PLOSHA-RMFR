@@ -1,7 +1,10 @@
 """
 Evaluation Metrics Module
 ===========================
-Collects and computes all six evaluation metrics from the paper.
+Collects and computes all evaluation metrics from the paper.
+
+Gramine-SGX Edition — adds recovery invocation count and
+system availability (V >= 0.95) per Experiment Plan §9, Table 8.
 
 Paper Reference: Section V - Performance Analysis
   1. Aggregation latency
@@ -9,7 +12,8 @@ Paper Reference: Section V - Performance Analysis
   3. Aggregation completeness (V_i)
   4. Aggregation-loss exposure (L_agg = 1/m*)
   5. Communication overhead (bytes)
-  6. System availability (% successful epochs)
+  6. System availability (% epochs with V >= 0.95)
+  7. Recovery invocation count
 """
 
 import numpy as np
@@ -28,6 +32,7 @@ class MetricsCollector:
         self.availabilities: List[float] = []
         self.quality_scores: List[float] = []
         self.reliabilities: List[float] = []
+        self.recovery_invocations: List[int] = []
 
     def record_epoch(self, metrics: dict):
         """Record metrics from a single epoch."""
@@ -39,6 +44,8 @@ class MetricsCollector:
         self.availabilities.append(metrics.get('availability', 0.0))
         self.quality_scores.append(metrics.get('quality_score', 0.0))
         self.reliabilities.append(metrics.get('reliability', 0.0))
+        self.recovery_invocations.append(
+            metrics.get('recovery_invocations', 0))
 
     def get_summary(self) -> dict:
         """Get summary statistics across all recorded epochs."""
@@ -80,6 +87,11 @@ class MetricsCollector:
             'reliability': {
                 'mean': np.mean(self.reliabilities) if self.reliabilities else 0.0,
                 'values': list(self.reliabilities)
+            },
+            'recovery_invocations': {
+                'total': int(np.sum(self.recovery_invocations)) if self.recovery_invocations else 0,
+                'mean_per_epoch': float(np.mean(self.recovery_invocations)) if self.recovery_invocations else 0.0,
+                'values': list(self.recovery_invocations)
             }
         }
 
