@@ -94,10 +94,10 @@ def execute(config: SystemConfig, fog_node: FogNode,
     # =========================================================================
     if use_real_crypto:
         slot_data = _collect_and_transform_real(config, fog_node,
-                                                 micro_slots)
+                                                 micro_slots, sensors)
     else:
         slot_data = _collect_and_transform_simulated(config, fog_node,
-                                                      micro_slots)
+                                                      micro_slots, sensors)
 
     # =========================================================================
     # Step 4: Micro-Slot Aggregation
@@ -269,7 +269,8 @@ def _partition_into_microslots(sensors: List[Sensor],
 
 def _collect_and_transform_simulated(config: SystemConfig,
                                       fog_node: FogNode,
-                                      micro_slots: List[List[int]]) -> List[dict]:
+                                      micro_slots: List[List[int]],
+                                      sensors: List[Sensor]) -> List[dict]:
     """
     Simulated data collection and transformation (no real crypto).
 
@@ -279,14 +280,15 @@ def _collect_and_transform_simulated(config: SystemConfig,
 
     Paper: Phase III, Step 3
     """
+    sensor_map = {s.sensor_id: s for s in sensors}
+    
     slot_data = []
     for slot_sensors in micro_slots:
         values = []
         for sid in slot_sensors:
-            # Simulate sensor reading and possible drop
-            if random.random() > config.sensor_drop_rate:
-                # Integer sensor reading d_j ∈ [0, max_sensor_value] (§3.1)
-                value = random.randint(0, config.max_sensor_value)
+            sensor = sensor_map.get(sid)
+            if sensor and random.random() > config.sensor_drop_rate:
+                value = sensor.generate_reading()
                 values.append(value)
                 # Timing: AES encrypt + TEE transform + Paillier encrypt
                 fog_node.epoch_agg_time += (config.t_aes + config.t_tee +
@@ -303,7 +305,8 @@ def _collect_and_transform_simulated(config: SystemConfig,
 
 def _collect_and_transform_real(config: SystemConfig,
                                  fog_node: FogNode,
-                                 micro_slots: List[List[int]]) -> List[dict]:
+                                 micro_slots: List[List[int]],
+                                 sensors: List[Sensor]) -> List[dict]:
     """
     Real cryptographic data collection and transformation.
 
@@ -317,15 +320,19 @@ def _collect_and_transform_real(config: SystemConfig,
 
     slot_data = []
     aes_key = fog_node.tee._aes_key
+    sensor_map = {s.sensor_id: s for s in sensors}
 
     for slot_sensors in micro_slots:
         ciphertexts = []
         values = []
         for sid in slot_sensors:
-            if random.random() > config.sensor_drop_rate:
-                # Generate integer sensor reading (§3.1)
-                value = random.randint(0, config.max_sensor_value)
-                ct_aes = aes_gcm.encrypt(aes_key, value)
+            sensor = sensor_map.get(sid)
+            if sensor and random.random() > config.sensor_drop_rate:
+                # Make sure sensor has the key
+                if not sensor.aes_key:
+                    sensor.aes_key = aes_key
+                
+                value, ct_aes = sensor.sense_and_encrypt()
 
                 # TEE ciphertext transformation
                 ct_paillier, plain = fog_node.tee.transform_ciphertext(ct_aes)

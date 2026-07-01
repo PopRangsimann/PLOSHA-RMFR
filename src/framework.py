@@ -34,6 +34,7 @@ from src.phases import (
     phase4_rmfr,
     phase5_aflto,
 )
+from src.dataset import DatasetTransformer
 
 
 class PLOSHARMFRFramework:
@@ -50,7 +51,8 @@ class PLOSHARMFRFramework:
 
     def __init__(self, config: Optional[SystemConfig] = None,
                  use_real_crypto: bool = False,
-                 static_aflto: bool = False):
+                 static_aflto: bool = False,
+                 dataset_path: Optional[str] = None):
         """
         Initialize the PLOSHA-RMFR framework.
 
@@ -58,11 +60,17 @@ class PLOSHARMFRFramework:
             config: System configuration. Uses DEFAULT_CONFIG if None.
             use_real_crypto: Use real Paillier/AES operations.
             static_aflto: If True, disable AFLTO threshold updates (for ablation).
+            dataset_path: If provided, load traces and failure schedules from CSV.
         """
         self.config = copy.deepcopy(config) if config else copy.deepcopy(DEFAULT_CONFIG)
         self.config.validate()
         self.use_real_crypto = use_real_crypto
         self.static_aflto = static_aflto
+        self.dataset_path = dataset_path
+
+        # Optional dataset inputs
+        self.dataset_failure_schedule = {}
+        self.dataset_workloads = []
 
         # System entities
         self.sensors: List[Sensor] = []
@@ -111,6 +119,33 @@ class PLOSHARMFRFramework:
         self.krm = KRM(self.config)
         self.cloud = CloudServer()
 
+        # Load dataset if provided
+        if self.dataset_path:
+            transformer = DatasetTransformer(
+                csv_path=self.dataset_path,
+                random_seed=self.config.random_seed
+            )
+            data = transformer.transform_for_plosha(
+                num_sensors=self.config.num_sensors,
+                num_fog_nodes=self.config.num_fog_nodes,
+                max_sensor_value=self.config.max_sensor_value
+            )
+            
+            # Load traces into sensors
+            for sid, trace in data["sensor_traces"].items():
+                if sid < len(self.sensors):
+                    self.sensors[sid].load_trace(trace)
+            
+            # Override sensor assignment based on dataset flow IP mapping
+            for fid, sids in data["fog_assignment"].items():
+                if fid < len(self.fog_nodes):
+                    for sid in sids:
+                        if sid < len(self.sensors):
+                            self.sensors[sid].assigned_fog_id = fid
+                            
+            self.dataset_failure_schedule = data["failure_schedule"]
+            self.dataset_workloads = data["epoch_workloads"]
+
         # Execute Phase I
         init_output = phase1_init.execute(
             self.config, self.sensors, self.fog_nodes,
@@ -147,10 +182,19 @@ class PLOSHARMFRFramework:
         for fog in self.fog_nodes:
             fog.reset_epoch_metrics()
 
-        # Inject failures if enabled (deterministic from seeded RNG)
+        # Inject failures if enabled (deterministic from seeded RNG or dataset)
         failed_nodes = set()
         if failure_injection:
-            failed_nodes = self._inject_failures()
+            if self.dataset_path and epoch in self.dataset_failure_schedule:
+                # Use malicious traffic events from dataset
+                failed_fogs = self.dataset_failure_schedule[epoch]
+                for fid in failed_fogs:
+                    if fid < len(self.fog_nodes) and self.fog_nodes[fid].operational:
+                        self.fog_nodes[fid].fail()
+                        failed_nodes.add(fid)
+            else:
+                # Fallback to random injection
+                failed_nodes = self._inject_failures()
 
         # Inject sensor drops
         self._inject_sensor_drops()
@@ -162,13 +206,26 @@ class PLOSHARMFRFramework:
         # Phase II: Predictive Capacity and Risk Estimation (all fog nodes)
         # =====================================================================
         # Update runtime states using proper measurement methods
+        
+        # Get dataset workload intensity if available
+        ds_workload = None
+        if self.dataset_path and epoch < len(self.dataset_workloads):
+            ds_workload = self.dataset_workloads[epoch]
+            
         for fog in self.fog_nodes:
             if fog.operational:
                 num_sensors = len(fog.assigned_sensors)
                 max_cap = max(1, self.config.num_sensors //
                               self.config.num_fog_nodes * 2)
+                
+                # Use dataset workload if available, else synthetic
+                if ds_workload is not None and fog.node_id in ds_workload:
+                    workload_int = ds_workload[fog.node_id]
+                else:
+                    workload_int = self.config.workload_intensity
+                    
                 fog.update_runtime_state(
-                    int(num_sensors * self.config.workload_intensity),
+                    int(num_sensors * workload_int),
                     max_cap,
                     rtt_mu=self.config.rtt_mu,
                     rtt_sigma=self.config.rtt_sigma,

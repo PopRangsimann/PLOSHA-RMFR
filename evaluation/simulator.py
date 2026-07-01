@@ -30,7 +30,8 @@ from evaluation.metrics import MetricsCollector
 def run_single_configuration(config: SystemConfig,
                               num_epochs: int = 20,
                               failure_injection: bool = True,
-                              static_aflto: bool = False) -> dict:
+                              static_aflto: bool = False,
+                              dataset_path: Optional[str] = None) -> dict:
     """
     Run a single simulation configuration and return aggregated metrics.
 
@@ -39,6 +40,7 @@ def run_single_configuration(config: SystemConfig,
         num_epochs: Number of epochs to simulate.
         failure_injection: Whether to inject fog-node failures.
         static_aflto: Whether to disable AFLTO (for ablation study).
+        dataset_path: Path to the dataset for workload simulation.
 
     Returns:
         Dictionary with aggregated metrics.
@@ -46,7 +48,8 @@ def run_single_configuration(config: SystemConfig,
     framework = PLOSHARMFRFramework(
         config=config,
         use_real_crypto=True,
-        static_aflto=static_aflto
+        static_aflto=static_aflto,
+        dataset_path=dataset_path
     )
     framework.initialize()
 
@@ -67,7 +70,8 @@ def run_experiment_sweep(base_config: SystemConfig,
                           num_epochs: int = 20,
                           num_runs: int = 3,
                           failure_injection: bool = True,
-                          static_aflto: bool = False) -> Dict[str, list]:
+                          static_aflto: bool = False,
+                          dataset_path: Optional[str] = None) -> Dict[str, list]:
     """
     Run a parameter sweep experiment with multi-run averaging.
 
@@ -79,6 +83,7 @@ def run_experiment_sweep(base_config: SystemConfig,
         num_runs: Number of runs per parameter value (for averaging).
         failure_injection: Whether to inject failures.
         static_aflto: Whether to disable AFLTO.
+        dataset_path: Path to the dataset for workload simulation.
 
     Returns:
         Dictionary with parameter values and corresponding metric lists.
@@ -112,7 +117,7 @@ def run_experiment_sweep(base_config: SystemConfig,
                 pass  # Some sweeps may temporarily violate constraints
 
             summary = run_single_configuration(
-                config, num_epochs, failure_injection, static_aflto)
+                config, num_epochs, failure_injection, static_aflto, dataset_path=dataset_path)
 
             run_latencies.append(summary['agg_latency']['mean'])
             run_rec_latencies.append(summary['recovery_latency']['mean'])
