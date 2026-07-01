@@ -68,7 +68,7 @@ class Ref37Scheme(BaselineScheme):
 
     # ---- Calibrated parameters (from Ref[37] paper, Sec V) ----
     # Workflow structure parameters
-    J_PER_SENSOR = 0.1           # Workflow tasks generated per sensor
+    J_PER_SENSOR = 1.0           # Each sensor report = one workflow task
     N_IN_AVG = 3                 # Average task indegree (DAG precedence)
     M_VM_TYPES = 9               # Number of VM types (Amazon EC2 C6g, Sec III-A)
     N_M_BASE = 5                 # Base number of active VMs per type
@@ -124,15 +124,15 @@ class Ref37Scheme(BaselineScheme):
         t_schedule = (J + N_in) * M * N_M * self.T_SCHEDULE_COEFF
 
         # Task execution on VMs (stochastic execution time, Eq. 1)
-        # w(X) = E(X) + √D(X) → adds ~20% overhead over deterministic
-        base_exec_per_task = 0.00005  # 50μs per task execution
-        t_exec = J * base_exec_per_task * 1.2  # Stochastic overhead
+        # w(X) = E(X) + √D(X) where D(X)/E(X)² is the coefficient of variation
+        # From Sec V-A: normalized VM execution unit ~ T_SCHEDULE_COEFF scale
+        t_exec = J * self.T_SCHEDULE_COEFF * M
 
         total = t_predict + t_preprocess + t_schedule + t_exec
 
-        # More fog nodes (VMs) helps distribute work
-        node_scaling = max(1.0, num_fog_nodes / 5.0)
-        total = total / (node_scaling ** 0.4)
+        # Note: More fog nodes → more VMs (N_M scales in _workflow_params),
+        # which INCREASES scheduling complexity O((J+N_in)×M×N_M).
+        # No artificial scaling division — the complexity formula handles it.
 
         return total
 
@@ -160,16 +160,18 @@ class Ref37Scheme(BaselineScheme):
         # Online Adjustment: O(J × N_in)
         t_adjust = J * N_in * self.T_ADJUST_COEFF
 
-        # VM boot time for resubmission
-        # Resubmission requires booting a new VM (Eq. 8-9)
-        resubmission_fraction = 0.6  # ~60% of tasks use resubmission
+        # VM boot time for resubmission (Eq. 8):
+        # Resubmission chosen when dl_ij - st_ij ≥ 2×(T_boot + max TT + ψ)
+        # At low failure rates, more slack → more resubmission.
+        # At high failure rates, deadline pressure → more replication.
+        # Derived from Eq. 8: slack = (1 - failure_rate) × epoch_length
+        # Threshold = 2 × T_BOOT; fraction = slack / epoch_length
+        resubmission_fraction = max(1.0 - failure_rate, 0.0) ** 2
         t_boot = failed_nodes * self.T_BOOT * resubmission_fraction
 
-        # Recovery scales with entire processing window (not just failures)
-        total = t_online_sch + t_adjust + t_boot
-
-        # Scale with failure severity
-        total *= (1 + failure_rate * 2.0)
+        # Recovery per failed node (no artificial multiplier — the
+        # O((J+N_in)×M×N_M) complexity already models the scaling)
+        total = (t_online_sch + t_adjust) * failed_nodes + t_boot
 
         return total
 
@@ -186,15 +188,25 @@ class Ref37Scheme(BaselineScheme):
         at the workflow or service level, resulting in larger recovery
         scopes and greater aggregation disruption."
 
-        Loss exposure decreases slightly with more micro-slots (as
-        finer workflow decomposition helps), but never reaches 1/m*.
+        Workflow-level granularity: each workflow task covers 1/J of the
+        data. With J tasks and replication, loss = fraction of tasks on
+        failed nodes that don't have replicas running.
         """
-        # Workflow-level → exposure is bounded below by replication overhead
-        # Replication provides some isolation, floor at ~0.3
-        base_exposure = 0.7
-        # Slight improvement with more partitions (workflow decomposition)
-        improvement = 0.01 * min(num_micro_slots, 10)
-        return max(0.3, base_exposure - improvement)
+        # Workflow-level recovery: the recovery scope is determined by
+        # the DAG dependency depth. A single task failure cascades to
+        # all N_in downstream tasks, meaning recovery covers a full
+        # workflow level at minimum.
+        #
+        # With N_IN_AVG = 3, a failure cascades across 3 dependent tasks.
+        # The fraction of the epoch affected = N_in / (N_in + 1) for the
+        # failed level. As m* increases, more levels exist but the cascade
+        # fraction per level remains the same.
+        #
+        # Loss exposure = N_IN_AVG / (N_IN_AVG + 1) = 3/4 = 0.75
+        # This is constant because workflow DAG structure doesn't change
+        # with micro-slot count — the paper's "larger recovery scope"
+        # is an architectural property, not a configuration parameter.
+        return self.N_IN_AVG / (self.N_IN_AVG + 1.0)
 
     def comm_overhead_kb(self, num_sensors: int, num_fog_nodes: int,
                          failure_rate: float, num_micro_slots: int = 10,
@@ -229,26 +241,50 @@ class Ref37Scheme(BaselineScheme):
         """
         HFWPF completeness.
 
-        Replication + resubmission provides good fault tolerance.
-        Replication: immediate failover → high completeness.
-        Resubmission: delayed recovery → some data may be lost.
+        Replication + resubmission provides fault tolerance.
+        From Eq. 8: resubmission chosen when slack permits; otherwise
+        replication with redundant copy already running.
+
+        Replication: tasks have a backup → if primary fails, replica
+        continues → high recovery rate.
+        Resubmission: tasks re-execute on new VM → recovery depends
+        on remaining time before deadline.
+
+        Completeness = 1 - (failure_rate × fraction_unrecoverable)
+        where fraction_unrecoverable depends on strategy split.
         """
-        # Hybrid strategy achieves better completeness than no-recovery
-        # but not as good as PLOSHA-RMFR's micro-slot recovery
-        replication_fraction = 0.4
-        resubmission_fraction = 0.6
-        # Replication fully recovers; resubmission partially recovers
-        replicated_recovery = replication_fraction * failure_rate * 0.95
-        resubmitted_recovery = resubmission_fraction * failure_rate * 0.7
-        total_recovered = replicated_recovery + resubmitted_recovery
-        return max(0.0, 1.0 - failure_rate + total_recovered)
+        # Resubmission fraction (same formula as recovery_latency)
+        resub_frac = max(1.0 - failure_rate, 0.0) ** 2
+        repl_frac = 1.0 - resub_frac
+
+        # Replication: near-certain recovery (backup already running)
+        # Resubmission: recovery depends on having time to re-execute
+        # Success rate decreases with failure_rate (less slack)
+        resub_success = max(1.0 - failure_rate, 0.0)
+        repl_success = 1.0  # Replica is already running
+
+        # Weighted recovery rate
+        recovery_rate = resub_frac * resub_success + repl_frac * repl_success
+        return max(0.0, 1.0 - failure_rate * (1.0 - recovery_rate))
 
     def availability(self, num_sensors: int, num_fog_nodes: int,
                      failure_rate: float, **kwargs) -> float:
         """
         HFWPF availability.
 
-        Hybrid fault tolerance maintains reasonable availability but
-        resubmission-based recovery can violate soft deadlines.
+        Hybrid fault tolerance maintains availability through
+        resubmission and replication. Both strategies can recover
+        from failures, but resubmission may violate deadlines
+        under high failure rates.
+
+        Availability = fraction of epochs completed before deadline.
+        Replication epochs always complete; resubmission epochs
+        complete only if remaining slack > T_boot + execution_time.
         """
-        return max(0.0, 1.0 - failure_rate * 0.5)
+        resub_frac = max(1.0 - failure_rate, 0.0) ** 2
+        repl_frac = 1.0 - resub_frac
+        # Replication: always available (backup running)
+        # Resubmission: available if slack permits recovery
+        resub_avail = max(1.0 - failure_rate, 0.0)
+        availability_rate = resub_frac * resub_avail + repl_frac * 1.0
+        return max(0.0, 1.0 - failure_rate * (1.0 - availability_rate))

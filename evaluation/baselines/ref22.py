@@ -56,9 +56,11 @@ class Ref22Scheme(BaselineScheme):
     T_KM_PER_SENSOR = 0.00002   # K-Means per-task assignment cost
 
     # Federated aggregation: θ_global = (1/N)Σθ_i (Eq. 20)
-    # Model size ~50K parameters → aggregation ~ 5ms per round
+    # Model size ~50K parameters (~200KB) → serialized collection
+    # from each fog node at fog-edge bandwidth (~100Mbps LAN):
+    # 200KB × 8 / 100Mbps = 16ms per node upload + averaging overhead
     T_FEDAGG_BASE = 0.005        # Base federated aggregation time
-    T_FEDAGG_PER_NODE = 0.001    # Per-node model collection overhead
+    T_FEDAGG_PER_NODE = 0.02     # Per-node model collection + averaging
 
     # Communication sizes
     DATA_SIZE = 128              # |Data|: raw sensor data payload (bytes)
@@ -74,32 +76,36 @@ class Ref22Scheme(BaselineScheme):
         FedDQN aggregation latency per epoch.
 
         From Table III:
-          Prediction:  T_DQN (one inference per scheduling decision)
+          Prediction:  T_DQN (DQN inference per scheduling decision)
           Scheduling:  N_s × T_KM (K-Means clustering of all tasks)
           Aggregation: T_FedAgg (federated model aggregation round)
 
-        The paper shows latency increases with sensors due to K-Means
-        scaling and DQN decision overhead per task.
+        In federated architecture, each fog node runs DQN + K-Means
+        for its local N_s/F sensors in PARALLEL. The bottleneck is
+        the per-node processing time plus FedAvg model sync overhead.
+
+        FedAvg sync is communication-bound: each node uploads its
+        local model (200KB+) to the coordinator at fog-edge bandwidth.
         """
         N_s = int(num_sensors * workload_intensity)
+        sensors_per_node = N_s / max(1, num_fog_nodes)
 
-        # Prediction: DQN inference per task + periodic training
-        t_predict = N_s * self.T_DQN_INFERENCE + self.T_DQN_TRAIN
+        # Per-node parallel work:
+        # DQN inference per task + K-Means assignment per task
+        t_per_node = (sensors_per_node * self.T_DQN_INFERENCE +
+                      sensors_per_node * self.T_KM_PER_SENSOR)
 
-        # Scheduling: K-Means clustering over all N_s tasks (Eq. 1-9)
-        # Complexity: K × N_s × max_iterations ≈ 3 × N_s × 10 iterations
-        t_schedule = N_s * self.T_KM_PER_SENSOR
+        # DQN training on local replay buffer (once per epoch per node)
+        t_per_node += self.T_DQN_TRAIN
 
-        # Aggregation: FedAvg over all fog nodes (Eq. 20)
+        # FedAvg model aggregation: communication-bound
+        # Each node uploads model → coordinator averages → broadcasts
+        # At fog-edge bandwidth (~10Mbps), 200KB model ≈ 160ms per node
+        # Serial collection from all nodes (FedAvg coordinator pattern)
         t_agg = self.T_FEDAGG_BASE + num_fog_nodes * self.T_FEDAGG_PER_NODE
 
-        # Scheduling scales as tasks are distributed across fog nodes
-        # but DQN doesn't benefit from hierarchical aggregation
-        total = t_predict + t_schedule + t_agg
-
-        # Latency reduction from more fog nodes is limited by model sync
-        node_scaling = max(1.0, num_fog_nodes / 5.0)
-        total = total / (node_scaling ** 0.3)  # Diminishing returns
+        # Total: parallel per-node work + serial model aggregation
+        total = t_per_node + t_agg
 
         return total
 
@@ -107,26 +113,14 @@ class Ref22Scheme(BaselineScheme):
                          failure_rate: float, num_micro_slots: int = 10,
                          **kwargs) -> float:
         """
-        FedDQN has NO explicit recovery mechanism.
+        FedDQN has NO recovery mechanism.
 
-        From Table III: Recovery = None
+        From Table III: Recovery = "—" (None).
         When a fog node fails, FedDQN does not perform recovery.
-        The failed tasks are simply lost, and the model must re-learn.
-        Recovery latency represents the re-scheduling overhead after
-        failures are detected.
+        The failed tasks are simply lost. Any re-scheduling is part
+        of the next epoch's normal scheduling phase, not recovery.
         """
-        # No recovery → re-scheduling required for all tasks on failed nodes
-        sensors_per_node = num_sensors / max(1, num_fog_nodes)
-        failed_nodes = max(1, int(num_fog_nodes * failure_rate))
-        tasks_to_reschedule = sensors_per_node * failed_nodes
-
-        # Re-scheduling: DQN inference + K-Means for affected tasks
-        reschedule_time = tasks_to_reschedule * (
-            self.T_DQN_INFERENCE + self.T_KM_PER_SENSOR
-        )
-
-        # No actual data recovery → just re-scheduling overhead
-        return reschedule_time
+        return 0.0
 
     def loss_exposure(self, num_micro_slots: int = 10, **kwargs) -> float:
         """
@@ -167,22 +161,18 @@ class Ref22Scheme(BaselineScheme):
         """
         Aggregation completeness for FedDQN.
 
-        Without recovery, all tasks on failed nodes are lost.
-        Completeness ≈ 1 - failure_rate.
-        DQN can re-distribute some tasks reactively, providing
-        marginal improvement over pure loss.
+        Without recovery, all data from failed nodes is lost.
+        Completeness = 1 - failure_rate.
+        FedDQN performs federated MODEL aggregation, not data recovery.
         """
-        base_loss = failure_rate
-        # DQN adaptive scheduling recovers a small fraction
-        dqn_recovery = failure_rate * 0.15
-        return max(0.0, 1.0 - base_loss + dqn_recovery)
+        return max(0.0, 1.0 - failure_rate)
 
     def availability(self, num_sensors: int, num_fog_nodes: int,
                      failure_rate: float, **kwargs) -> float:
         """
         System availability for FedDQN.
 
-        Learning-based adaptation provides some resilience via
-        re-scheduling, but no fault recovery mechanism.
+        No fault recovery mechanism. Epochs with failed nodes
+        lose that partition's data entirely.
         """
-        return max(0.0, 1.0 - failure_rate * 0.8)
+        return max(0.0, 1.0 - failure_rate)

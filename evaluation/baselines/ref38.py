@@ -99,6 +99,7 @@ class Ref38Scheme(BaselineScheme):
 
     # Standby instances (Sec III-D)
     N_M_STANDBY = 3              # Maximum standby instances (Sec VI-A)
+    HEARTBEAT_SIZE = 64          # Heartbeat payload: timestamp + node_id + status (bytes)
 
     def __init__(self, config: SystemConfig = None):
         super().__init__(config)
@@ -134,7 +135,7 @@ class Ref38Scheme(BaselineScheme):
         """
         N_s = int(num_sensors * workload_intensity)
         V, E, V_m = self._network_params(num_fog_nodes)
-        R = max(1, N_s // 10)  # Number of concurrent requests (batch)
+        R = max(1, N_s)  # Each sensor = one stream processing request
 
         # MT-LSTM prediction: O(T × |R| × g_m × h_g²)
         g_m = self.G_M_DEFAULT
@@ -152,14 +153,17 @@ class Ref38Scheme(BaselineScheme):
         # Averaged over all cloudlets
         rho = workload_intensity  # Data rate factor
         t_processing = self.ALPHA_J * (self.M_J_MEMORY / 1000.0) * rho
-        t_cold_start = V_m * self.D_COLD_START * 0.3  # 30% chance of cold start
+        # Cold start: probability = 1/(1 + N_M_STANDBY) per Sec III-D
+        # (standby instances reduce cold starts proportionally)
+        cold_start_prob = 1.0 / (1.0 + self.N_M_STANDBY)
+        t_cold_start = V_m * self.D_COLD_START * cold_start_prob
 
         total = t_predict + t_topo + t_placement + t_processing + t_cold_start
 
-        # More fog nodes → more cloudlets → O(log|V|) placement overhead
-        # But also more parallelism for data processing
-        node_benefit = max(1.0, num_fog_nodes / 5.0)
-        total = total / (node_benefit ** 0.35)
+        # Note: More fog nodes → more cloudlets → higher |V| → higher
+        # placement complexity O(|R|·log|V|·Θ). The _network_params()
+        # and _theta() already capture this scaling correctly.
+        # No artificial division — complexity grows with infrastructure.
 
         return total
 
@@ -184,27 +188,27 @@ class Ref38Scheme(BaselineScheme):
         reconfiguration require transferring larger execution states."
         """
         V, E, V_m = self._network_params(num_fog_nodes)
-        R = max(1, num_sensors // 10)
+        R = max(1, num_sensors)  # Each sensor = one stream processing request
         failed_nodes = max(1, int(num_fog_nodes * failure_rate))
 
         # Standby instance switching delay
         # d^rec = Σ y_l · κ_m · Σ d_e  (Eq. 4)
-        kappa_m = 0.5  # State buffer size in KB (normalized)
-        avg_link_delay = 0.0003  # Average link delay (seconds)
-        avg_path_length = 3  # Average path length to standby
-        t_switching = failed_nodes * V_m * kappa_m * avg_link_delay * avg_path_length
+        # κ_m = STATE_SIZE in bytes; d_e modeled from placement graph
+        # avg path length in graph ≈ log2(|V|) hops
+        avg_path_length = max(1, int(np.log2(max(2, V))))
+        # Per-hop delay derived from placement coefficient
+        per_hop_delay = self.T_PLACEMENT_COEFF * V
+        t_switching = failed_nodes * V_m * (self.STATE_SIZE / 1024.0) * per_hop_delay * avg_path_length
 
         # Re-location of standby instances (Stage 3 of Heu, repeated)
         theta = self._theta(V_m, V, E)
         t_relocation = failed_nodes * np.log2(max(2, V)) * theta * self.T_PLACEMENT_COEFF
 
-        # Full window scaling: m* × state migration
-        t_state_migration = num_micro_slots * failed_nodes * 0.0005
+        # Full window scaling: m* × state migration per failed node
+        # State migration cost = STATE_SIZE transfer at placement rate
+        t_state_migration = num_micro_slots * failed_nodes * self.D_COLD_START
 
         total = t_switching + t_relocation + t_state_migration
-
-        # Scale with failure severity
-        total *= (1 + failure_rate * 3.0)
 
         return total
 
@@ -225,12 +229,23 @@ class Ref38Scheme(BaselineScheme):
         (since standby instances are already deployed), but still
         worse than PLOSHA-RMFR's micro-slot containment.
         """
-        # Active-standby provides moderate isolation
-        # Floor bounded by standby coverage
-        base_exposure = 0.6
-        # Standby instances absorb some failures
-        standby_benefit = 0.02 * min(num_micro_slots, 10)
-        return max(0.25, base_exposure - standby_benefit)
+        # Service-level recovery: the recovery scope covers one function
+        # and its downstream chain in the V_m-function DAG.
+        #
+        # With VM_FUNCTIONS_PER_REQ = 5, a failure at any function
+        # exposes approximately (V_m - 1)/V_m of downstream processing.
+        # Standby instances (N_M_STANDBY = 3) absorb the immediate
+        # failure but don't prevent downstream data disruption.
+        #
+        # Loss exposure = (V_m - 1) / V_m = 4/5 = 0.80
+        # Slightly reduced by standby coverage:
+        # Effective = (V_m - 1) / (V_m + N_M_STANDBY)
+        # = 4 / 8 = 0.50
+        #
+        # Better than Ref[37] (0.75) because standbys provide faster
+        # failover, but worse than PLOSHA-RMFR's micro-slot containment.
+        return (self.VM_FUNCTIONS_PER_REQ - 1.0) / (
+            self.VM_FUNCTIONS_PER_REQ + self.N_M_STANDBY)
 
     def comm_overhead_kb(self, num_sensors: int, num_fog_nodes: int,
                          failure_rate: float, num_micro_slots: int = 10,
@@ -260,7 +275,7 @@ class Ref38Scheme(BaselineScheme):
         recovery_comm = num_micro_slots * self.STATE_SIZE * failed_nodes
 
         # Standby instance maintenance overhead (periodic heartbeats)
-        standby_overhead = num_fog_nodes * self.N_M_STANDBY * 64  # 64 bytes per heartbeat
+        standby_overhead = num_fog_nodes * self.N_M_STANDBY * self.HEARTBEAT_SIZE
 
         total_bytes = data_collection + coordination + recovery_comm + standby_overhead
         return total_bytes / 1024.0
@@ -270,27 +285,36 @@ class Ref38Scheme(BaselineScheme):
         """
         SEC completeness.
 
-        Active-standby failover provides good fault tolerance for
-        single failures (Pr(f_l) = 1 - p_l^{n_m+1}, Eq. 1).
-        With n_m=3 standby instances and p_l=0.003:
-          Pr = 1 - 0.003^4 ≈ 0.999999999919
-        But under higher failure rates, standby instances may
-        also be affected.
+        Active-standby failover: Pr(f_l) = 1 - p_l^{n_m+1} (Eq. 1).
+        With n_m standby instances, a function survives if at least
+        one of (n_m + 1) instances is alive.
+
+        Per-function survival probability:
+          Pr_survive = 1 - failure_rate^(N_M_STANDBY + 1)
+
+        Overall completeness = Pr_survive (since all functions
+        independently apply the same standby model).
         """
-        # Standby mechanism handles single failures well
-        # Multiple simultaneous failures degrade performance
-        single_recovery = min(failure_rate, 0.1) * 0.9
-        multi_failure_loss = max(0, failure_rate - 0.1) * 0.5
-        return max(0.0, 1.0 - failure_rate + single_recovery - multi_failure_loss)
+        # Per Eq. 1: probability all (n_m+1) instances fail simultaneously
+        p_all_fail = failure_rate ** (self.N_M_STANDBY + 1)
+        return max(0.0, 1.0 - p_all_fail)
 
     def availability(self, num_sensors: int, num_fog_nodes: int,
                      failure_rate: float, **kwargs) -> float:
         """
         SEC availability.
 
-        Active-standby failover maintains high availability for
-        moderate failure rates. Cold-start delays during standby
-        activation may slightly reduce availability.
+        Active-standby failover: system is available as long as at
+        least one instance (active or standby) is alive per function.
+        Same model as completeness (Eq. 1), but availability also
+        accounts for cold-start delay during standby activation.
+
+        Availability = Pr_survive × (1 - cold_start_fraction)
+        where cold_start_fraction = D_COLD_START / epoch_duration
         """
-        # Standby instances provide fast failover
-        return max(0.0, 1.0 - failure_rate * 0.4)
+        p_all_fail = failure_rate ** (self.N_M_STANDBY + 1)
+        pr_survive = 1.0 - p_all_fail
+        # Cold-start penalty: standby activation adds D_COLD_START delay
+        # relative to a typical epoch (~1s). Only applies when failover occurs.
+        cold_start_fraction = self.D_COLD_START * failure_rate
+        return max(0.0, pr_survive - cold_start_fraction)

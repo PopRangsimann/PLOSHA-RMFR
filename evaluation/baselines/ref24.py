@@ -89,39 +89,39 @@ class Ref24Scheme(BaselineScheme):
         The paper performs FLAT aggregation: all sensors encrypt and
         sign individually, then ES batch-verifies and aggregates.
         No hierarchical structure → latency grows steeply with N_s.
+
+        Per-sensor pipeline cost includes sensor-side T_PEnc + T_Sig
+        because IIoT sensors are resource-constrained — each sensor's
+        report arrives at the ES only after the sensor finishes its
+        Paillier encryption (5.2ms) and ECDSA signing (1.1ms).
+        This creates a sequential arrival pipeline at the ES.
         """
         N_s = int(num_sensors * workload_intensity)
         sensors_per_es = N_s / max(1, num_fog_nodes)
 
-        # Step 1 — Sensor side (parallelized across sensors, but each does):
-        # Paillier encryption + ECDSA signature
-        t_sensor = self.T_PAILLIER_ENC + self.T_ECDSA_SIGN
+        # Per Table III: N_s × (T_PEnc + T_Sig + T_BVer + T_PAdd)
+        # Distributed across F edge servers, per-ES sequential cost:
+        t_per_sensor = (
+            self.T_PAILLIER_ENC +       # Sensor: Paillier encryption
+            self.T_ECDSA_SIGN +         # Sensor: ECDSA signature
+            self.T_BATCH_VERIFY_PER +   # ES: batch verify per sensor
+            self.T_PAILLIER_ADD         # ES: homomorphic aggregation
+        )
+        t_es = sensors_per_es * t_per_sensor
 
-        # Step 2 — ES side: batch verify + homomorphic aggregation
-        # Batch verify: O(t) point multiplications + 1 multi-check
-        t_batch_verify = (self.T_BATCH_VERIFY_BASE +
-                          sensors_per_es * self.T_BATCH_VERIFY_PER)
+        # Batch verify base cost + differential privacy noise
+        t_es += self.T_BATCH_VERIFY_BASE + self.T_LAPLACE_NOISE
 
-        # Homomorphic aggregation: multiply all ciphertexts
-        t_homo_agg = sensors_per_es * self.T_PAILLIER_ADD
-
-        # Differential privacy noise addition
-        t_dp = self.T_LAPLACE_NOISE
-
-        # ES-side total per ES
-        t_es = t_batch_verify + t_homo_agg + t_dp
-
-        # Step 3 — CC side: batch verify ES sigs + decrypt
+        # CC side: batch verify ES signatures + ONE Paillier decryption
+        # (homomorphic property: CC aggregates ES sub-ciphertexts via
+        # Paillier multiplication, then decrypts the final aggregate ONCE)
         t_cc_verify = (self.T_BATCH_VERIFY_BASE +
                        num_fog_nodes * self.T_BATCH_VERIFY_PER)
-        t_cc_decrypt = num_fog_nodes * self.T_PAILLIER_DEC
+        t_cc_agg = (num_fog_nodes - 1) * self.T_PAILLIER_ADD  # Combine sub-aggregates
+        t_cc_decrypt = self.T_PAILLIER_DEC  # Single final decryption
 
-        # Total: sensor (parallel) + ES processing + CC processing
-        # Sensors operate in parallel but ES processes sequentially
-        total = t_sensor + t_es + t_cc_verify + t_cc_decrypt
+        total = t_es + t_cc_verify + t_cc_agg + t_cc_decrypt
 
-        # Flat aggregation doesn't benefit much from more fog nodes
-        # because each ES still processes its full share sequentially
         return total
 
     def recovery_latency(self, num_sensors: int, num_fog_nodes: int,
@@ -130,21 +130,11 @@ class Ref24Scheme(BaselineScheme):
         """
         PPDA has NO recovery mechanism.
 
-        From Table III: Recovery = None.
+        From Table III: Recovery = "—" (None).
         When an ES fails, the entire aggregation for that ES's
-        sensors is lost. There is no re-aggregation.
+        sensors is lost. There is no re-aggregation or recovery.
         """
-        # No recovery → total re-aggregation of affected partition required
-        sensors_per_es = num_sensors / max(1, num_fog_nodes)
-        failed_nodes = max(1, int(num_fog_nodes * failure_rate))
-        affected_sensors = sensors_per_es * failed_nodes
-
-        # Must re-do: Paillier encrypt + sign + batch verify + aggregate
-        t_redo = affected_sensors * (
-            self.T_PAILLIER_ENC + self.T_ECDSA_SIGN +
-            self.T_BATCH_VERIFY_PER + self.T_PAILLIER_ADD
-        )
-        return t_redo
+        return 0.0
 
     def loss_exposure(self, num_micro_slots: int = 10, **kwargs) -> float:
         """
@@ -165,23 +155,20 @@ class Ref24Scheme(BaselineScheme):
         PPDA communication overhead.
 
         From Table IV:
-          Data Collection:  N_s × (|CT_P| + |Sig|)
-          Coordination:     N_s × |Sig|
+          Data Collection:  N_s × (|CT_P| + |Sig|)  — sensor → ES
+          Coordination:     N_s × |Sig|             — batch verify data
           Recovery:         None
 
         Heavy because every sensor transmits a full Paillier ciphertext
         (256 bytes) plus an ECDSA signature (72 bytes).
         """
-        # Data collection: sensor → ES
+        # Data collection: sensor → ES (Paillier ciphertext + ECDSA signature)
         data_collection = num_sensors * (self.CT_PAILLIER_SIZE + self.ECDSA_SIG_SIZE)
 
-        # Coordination: ES → CC (aggregated ciphertexts + signatures)
+        # Coordination: ES → CC (aggregated ciphertexts + ES signatures)
         coordination = num_fog_nodes * (self.CT_PAILLIER_SIZE + self.ECDSA_SIG_SIZE)
 
-        # Signature verification data flow
-        sig_flow = num_sensors * self.ECDSA_SIG_SIZE
-
-        total_bytes = data_collection + coordination + sig_flow
+        total_bytes = data_collection + coordination
         return total_bytes / 1024.0  # Convert to KB
 
     def completeness(self, num_sensors: int, num_fog_nodes: int,
@@ -200,7 +187,7 @@ class Ref24Scheme(BaselineScheme):
         """
         PPDA availability.
 
-        Epochs with any ES failure lose that partition's data.
-        The scheme still produces results from surviving ESs.
+        No recovery mechanism. Epochs with any ES failure lose
+        that partition's data entirely.
         """
-        return max(0.0, 1.0 - failure_rate * 0.9)
+        return max(0.0, 1.0 - failure_rate)
