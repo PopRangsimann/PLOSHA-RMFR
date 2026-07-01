@@ -45,7 +45,7 @@ def run_single_configuration(config: SystemConfig,
     """
     framework = PLOSHARMFRFramework(
         config=config,
-        use_real_crypto=False,
+        use_real_crypto=True,
         static_aflto=static_aflto
     )
     framework.initialize()

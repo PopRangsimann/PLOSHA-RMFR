@@ -212,17 +212,16 @@ def tee_verify(payload: bytes, signature: bytes, public_key) -> bool:
 
 
 def get_sgx_quote(report_data: bytes) -> bytes:
-    """Simulate SGX quote retrieval.
-
-    In a real Gramine-SGX environment this reads /dev/attestation/quote.
-    In simulation, we return a deterministic placeholder derived from
-    the report data so the rest of the pipeline can proceed.
+    """Read the SGX quote Gramine exposes at /dev/attestation,
+    used once at startup to prove this enclave is the signed
+    tee_sign.py running under the expected manifest measurement.
 
     Paper §5.4: "Read the SGX quote Gramine exposes at /dev/attestation"
     """
-    # Simulation stub: hash the report data to produce a deterministic
-    # "quote" of the expected size.  No real attestation happens here.
-    return hashlib.sha256(b"SGX_QUOTE_SIM:" + report_data).digest()
+    with open('/dev/attestation/user_report_data', 'wb') as f:
+        f.write(report_data.ljust(64, b'\x00'))
+    with open('/dev/attestation/quote', 'rb') as f:
+        return f.read()
 
 
 def compute_hash(data_tuple: tuple) -> bytes:

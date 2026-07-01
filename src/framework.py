@@ -462,7 +462,7 @@ def run_quick_test():
         random_seed=42
     )
 
-    framework = PLOSHARMFRFramework(config=config, use_real_crypto=False)
+    framework = PLOSHARMFRFramework(config=config, use_real_crypto=True)
     framework.initialize()
 
     print(f"\n[Phase I] Initialized: {config.num_sensors} sensors, "
