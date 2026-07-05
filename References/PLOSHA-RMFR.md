@@ -135,21 +135,21 @@ The main contributions of this paper are summarized as follows:
 # Related Work
 
 ::: table*
-  ---------------------------------- -------------- ---------------- -------------- ----------------- ----------------- ---------------- ----------------
-  **Scheme**                          **Adaptive**   **Predictive**   **Unified**       **Hier.**       **Encrypted**      **Secure**     **Fault-Loss**
-                                      **Resource**   **Adaptation**   **Recovery**   **Aggregation**   **Aggregation**   **Delegation**   **Mitigation**
-  FOCALB [@ref11]                                                                                                                        
-  ELECTRE [@ref12]                                                                                                                       
-  SDN-Based LB [@ref15]                                    P                                                                             
-  FedDQN [@ref22]                                                                                                                        
-  Replica Scheduling [@ref19]              P                               P                                                             
-  Fault-Aware Scheduling [@ref20]          P                               P                                                             
-  Paillier Aggregation [@ref7]                                                                                                           
-  Robust IIoT Aggregation [@ref24]                                         P                                                                    P
-  P2-SWAN [@ref33]                                                                                                             P         
-  PRE-Based Delegation [@ref27]                                                                               P                          
-  **PLOSHA-RMFR (Ours)**                                                                                                                 
-  ---------------------------------- -------------- ---------------- -------------- ----------------- ----------------- ---------------- ----------------
+  --------------------------------- -------------- ---------------- -------------- ----------------- ----------------- ---------------- ----------------
+  **Scheme**                         **Adaptive**   **Predictive**   **Unified**       **Hier.**       **Encrypted**      **Secure**     **Fault-Loss**
+                                     **Resource**   **Adaptation**   **Recovery**   **Aggregation**   **Aggregation**   **Delegation**   **Mitigation**
+  FOCALB [@ref11]                                                                                                                       
+  ELECTRE [@ref12]                                                                                                                      
+  SDN-Based LB [@ref15]                                   P                                                                             
+  FedDQN [@ref22]                                                                                                                       
+  Replica Scheduling [@ref19]             P                               P                                                             
+  Fault-Aware Scheduling [@ref20]         P                               P                                                             
+  Paillier Aggregation [@ref7]                                                                                                          
+  Robust IIoT  [@ref24]                                                   P                                                                    P
+  P2-SWAN [@ref33]                                                                                                            P         
+  PRE-Based Delegation [@ref27]                                                                              P                          
+  **PLOSHA-RMFR (Ours)**                                                                                                                
+  --------------------------------- -------------- ---------------- -------------- ----------------- ----------------- ---------------- ----------------
 :::
 
 Research related to resilient Industrial Internet of Things (IIoT)
@@ -170,17 +170,19 @@ nodes. Existing approaches can generally be categorized into
 optimization-based, learning-based, and distributed resource-management
 schemes.
 
-Optimization-based methods employ heuristic or multi-criteria decision
-models to improve resource utilization and scheduling efficiency.
-Representative examples include FOCALB [@ref11], multi-criteria
-resource-allocation frameworks [@ref12; @ref13], and energy-aware
-scheduling mechanisms [@ref10]. More recently, advanced optimization
-techniques such as memory-driven Gray Wolf Optimization (SIREN) [@ref38]
-and mobility-aware resource-allocation frameworks [@ref25] have been
-proposed to improve adaptation under dynamic edge-cloud environments.
-While these approaches achieve effective task placement, their
-optimization processes often incur substantial computational overhead
-and may struggle to respond rapidly to highly dynamic IIoT workloads.
+Optimization-based methods employ heuristic, multi-criteria, and
+metaheuristic decision models to improve resource utilization and
+scheduling efficiency. Representative examples include FOCALB [@ref11],
+multi-criteria resource-allocation frameworks [@ref12; @ref13], and
+energy-aware scheduling mechanisms [@ref10]. More recently, advanced
+optimization frameworks such as SIREN [@ref32], which combines
+game-theoretic scheduling with memory-driven Gray Wolf Optimization, and
+mobility-aware resource-allocation frameworks [@ref25] have been
+proposed to improve adaptation under dynamic edge--cloud environments.
+Although these approaches achieve effective task placement and resource
+allocation, their optimization processes may introduce non-negligible
+computational overhead and repeated reconfiguration costs, limiting
+their responsiveness under highly dynamic IIoT workloads.
 
 Learning-based solutions utilize reinforcement learning, federated
 learning, and AI-assisted decision making to adapt scheduling policies
@@ -2130,9 +2132,7 @@ of PLOSHA-RMFR and a conventional flat aggregation framework,
 respectively.
 
 Because RMFR provides proactive delegation, localized recovery, and
-failover continuity
-
-$$\begin{equation}
+failover continuity $$\begin{equation}
 P_{\mathrm{dis}}^{\mathrm{RMFR}}
 <
 P_{\mathrm{dis}}^{\mathrm{flat}}
@@ -2252,9 +2252,10 @@ parts: computation cost analysis, communication cost analysis, and
 performance analysis. To provide a comprehensive comparison, four
 representative schemes are selected from the related work, including
 FedDQN [@ref22], Robust IIoT Aggregation [@ref24], Fault-Tolerant
-Workflow Scheduling [@ref37], and SIREN [@ref38]. These schemes
-represent learning-based workload adaptation, privacy-preserving
-encrypted aggregation, fault-tolerant scheduling and recovery, and
+Workflow Scheduling [@ref37], and [Fault-Tolerant Serverless Edge Stream
+Processing [@ref38]]{style="color: red"}. These schemes represent
+learning-based workload adaptation, privacy-preserving encrypted
+aggregation, fault-tolerant scheduling and recovery, and
 optimization-based resource management, respectively. Together, they
 cover the key functionalities addressed by PLOSHA-RMFR and provide
 suitable baselines for evaluating predictive adaptation, secure
