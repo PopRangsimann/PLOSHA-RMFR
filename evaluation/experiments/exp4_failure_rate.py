@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.config import SystemConfig
 from evaluation.simulator import run_single_configuration
-from evaluation.baselines import Ref22Scheme, Ref24Scheme, Ref37Scheme, Ref38Scheme
+from evaluation.baselines import Ref37Scheme, Ref38Scheme
 
 
 def run_experiment(output_dir: str = "results"):
@@ -28,6 +28,11 @@ def run_experiment(output_dir: str = "results"):
 
     Paper: "The failure rate is varied from 2% to 20% by randomly
            introducing node outages during aggregation epochs."
+
+    Note: Ref[22] and Ref[24] are excluded — neither has a recovery
+    mechanism (Table III: Recovery = "—"). Ref[22] performs federated
+    model aggregation (not data recovery), and Ref[24] performs
+    privacy-preserving aggregation without fault recovery.
     """
     print("=" * 60)
     print("Experiment 4: Impact of Failure Rate")
@@ -72,9 +77,10 @@ def run_experiment(output_dir: str = "results"):
               f"Comp={avg_comp:.3f}, Avail={avg_avail:.3f}")
 
     # --- Baselines ---
-    # Exp 4 uses Ref[22], Ref[37], Ref[38] (Ref[24] has no recovery)
+    # Only Ref[37] and Ref[38] have recovery mechanisms (Table III).
+    # Ref[22] and Ref[24] have no recovery — excluded to avoid misleading
+    # flat zero-lines on the recovery latency graph.
     baselines = [
-        (Ref22Scheme(), 's--', '#E91E63'),
         (Ref37Scheme(), 'D--', '#9C27B0'),
         (Ref38Scheme(), 'v--', '#4CAF50'),
     ]

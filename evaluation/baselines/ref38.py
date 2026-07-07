@@ -189,7 +189,11 @@ class Ref38Scheme(BaselineScheme):
         """
         V, E, V_m = self._network_params(num_fog_nodes)
         R = max(1, num_sensors)  # Each sensor = one stream processing request
-        failed_nodes = max(1, int(num_fog_nodes * failure_rate))
+        # Use continuous expected value for smooth scaling.
+        # E[failed_nodes] = num_fog_nodes × failure_rate
+        failed_nodes = num_fog_nodes * failure_rate
+        if failed_nodes < 1e-9:
+            return 0.0
 
         # Standby instance switching delay
         # d^rec = Σ y_l · κ_m · Σ d_e  (Eq. 4)
@@ -271,7 +275,7 @@ class Ref38Scheme(BaselineScheme):
 
         # Recovery: m* × |State| — full processing window scaling
         # This is the LARGEST recovery communication among all baselines
-        failed_nodes = max(1, int(num_fog_nodes * failure_rate))
+        failed_nodes = num_fog_nodes * failure_rate
         recovery_comm = num_micro_slots * self.STATE_SIZE * failed_nodes
 
         # Standby instance maintenance overhead (periodic heartbeats)
