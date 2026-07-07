@@ -10,10 +10,10 @@ sys.enable_sigterm_injection = true
 
 sgx.enclave_size = "512M"
 sgx.max_threads = 16
-sgx.cpu_features.avx = true
-sgx.cpu_features.avx2 = true
-sgx.cpu_features.rdrand = true
-sgx.cpu_features.aesni = true
+sgx.cpu_features.avx = "unspecified"
+sgx.cpu_features.avx2 = "unspecified"
+sgx.cpu_features.rdrand = "unspecified"
+sgx.cpu_features.aesni = "unspecified"
 sgx.trusted_files = [
   "file:plosha_rmfr",
   "file:{{ gramine.runtimedir() }}/",

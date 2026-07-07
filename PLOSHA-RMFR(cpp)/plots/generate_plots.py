@@ -1,0 +1,174 @@
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+from pathlib import Path
+
+# Set up matplotlib style to match the template
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.size'] = 12
+plt.rcParams['axes.labelsize'] = 14
+plt.rcParams['legend.fontsize'] = 10
+plt.rcParams['legend.framealpha'] = 0.9
+
+# Scheme definitions (matching the directories)
+SCHEMES = {
+    'plosha_rmfr': {
+        'label': 'PLOSHA-RMFR (ours)',
+        'color': '#1f77b4',  # Blue
+        'marker': 'o'
+    },
+    'fed_dqn': {
+        'label': 'Ref[22]',
+        'color': '#ff7f0e',  # Orange
+        'marker': 's'
+    },
+    'robust_iiot': {
+        'label': 'Ref[24]',
+        'color': '#d62728',  # Red
+        'marker': 'D'
+    },
+    'fault_tolerant_workflow': {
+        'label': 'Ref[37]',
+        'color': '#2ca02c',  # Green
+        'marker': '^'
+    },
+    'ft_serverless_edge': {
+        'label': 'Ref[38]',
+        'color': '#9467bd',  # Purple
+        'marker': 'v'
+    }
+}
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+BASE_DIR = SCRIPT_DIR.parent / 'schemes'
+OUTPUT_DIR = SCRIPT_DIR / 'output'
+
+def setup_axes(ax):
+    """Apply template styling to axes."""
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.grid(True, linestyle='--', alpha=0.5, color='#d3d3d3')
+    ax.tick_params(direction='out')
+
+def get_data(exp_dir_name):
+    """Load data for a given experiment directory name across all schemes."""
+    data = {}
+    for scheme_id in SCHEMES.keys():
+        csv_path = BASE_DIR / scheme_id / exp_dir_name / 'results.csv'
+        if csv_path.exists():
+            try:
+                df = pd.read_csv(csv_path)
+                # Map generic columns to PLOSHA expected columns based on experiment name
+                if 'variable_value' in df.columns:
+                    if exp_dir_name == 'exp1_sensor_scalability':
+                        df = df.rename(columns={'variable_value': 'num_sensors', 'primary_metric': 'aggregation_latency_ms'})
+                    elif exp_dir_name == 'exp2_fog_scalability':
+                        df = df.rename(columns={'variable_value': 'num_fog_nodes', 'primary_metric': 'aggregation_latency_ms'})
+                    elif exp_dir_name == 'exp3_workload_intensity':
+                        df = df.rename(columns={'variable_value': 'workload_multiplier', 'primary_metric': 'aggregation_latency_ms'})
+                    elif exp_dir_name == 'exp4_failure_rate':
+                        df = df.rename(columns={'variable_value': 'failure_rate', 'primary_metric': 'recovery_latency_ms', 'secondary_metric_1': 'aggregation_completeness'})
+                    elif exp_dir_name == 'exp5_loss_exposure':
+                        df = df.rename(columns={'variable_value': 'micro_slots', 'primary_metric': 'loss_exposure_fraction'})
+                    elif exp_dir_name == 'exp6_recovery_comm':
+                        df = df.rename(columns={'variable_value': 'incomplete_micro_slots', 'primary_metric': 'communication_overhead_KB'})
+                data[scheme_id] = df
+            except Exception as e:
+                print(f"Error reading {csv_path}: {e}")
+    return data
+
+def plot_experiment(exp_name, x_col, y_col, x_label, y_label, output_filename,
+                    x_scale='linear', y_scale='linear', legend_loc='upper left'):
+    """Generate a plot for a specific experiment and metric."""
+    data = get_data(exp_name)
+    if not data:
+        print(f"No data found for experiment {exp_name}")
+        return
+
+    fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
+
+    for scheme_id, df in data.items():
+        if x_col in df.columns and y_col in df.columns:
+            scheme_info = SCHEMES[scheme_id]
+            ax.plot(df[x_col], df[y_col],
+                    label=scheme_info['label'],
+                    color=scheme_info['color'],
+                    marker=scheme_info['marker'],
+                    linewidth=2.5,
+                    markersize=8,
+                    zorder=5 if scheme_id == 'plosha_rmfr' else 3) # Bring Spider to front
+
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_xscale(x_scale)
+    ax.set_yscale(y_scale)
+    
+    # Legend ordering: we want other references first, then ours at the bottom
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        # Sort so Ref[X] comes before PLOSHA-RMFR (ours)
+        sorted_pairs = sorted(zip(handles, labels), key=lambda pair: (pair[1] == 'PLOSHA-RMFR (ours)', pair[1]))
+        handles_sorted, labels_sorted = zip(*sorted_pairs)
+        ax.legend(handles_sorted, labels_sorted, loc=legend_loc, frameon=True)
+
+    setup_axes(ax)
+    fig.tight_layout()
+    
+    out_path = OUTPUT_DIR / output_filename
+    fig.savefig(out_path, bbox_inches='tight')
+    print(f"Generated {out_path}")
+    plt.close(fig)
+
+def main():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
+    print("Generating plots...")
+
+    # Experiment 1: Sensor Scalability
+    plot_experiment('exp1_sensor_scalability',
+                    x_col='num_sensors', y_col='aggregation_latency_ms',
+                    x_label='Number of Sensors', y_label='Aggregation Latency (ms)',
+                    y_scale='log',
+                    output_filename='graph1_sensor_scalability_latency.png')
+
+    # Experiment 2: Fog Scalability
+    plot_experiment('exp2_fog_scalability',
+                    x_col='num_fog_nodes', y_col='aggregation_latency_ms',
+                    x_label='Number of Fog Nodes', y_label='Aggregation Latency (ms)',
+                    y_scale='log',
+                    output_filename='graph2_fog_scalability_latency.png')
+
+    # Experiment 3: Workload Intensity
+    plot_experiment('exp3_workload_intensity',
+                    x_col='workload_multiplier', y_col='aggregation_latency_ms',
+                    x_label='Workload Intensity (Multiplier)', y_label='Aggregation Latency (ms)',
+                    y_scale='log',
+                    output_filename='graph3_workload_intensity_latency.png')
+
+    # Experiment 4: Failure Rate
+    plot_experiment('exp4_failure_rate',
+                    x_col='failure_rate', y_col='recovery_latency_ms',
+                    x_label='Failure Rate', y_label='Recovery Latency (ms)',
+                    output_filename='graph4_failure_rate_latency.png')
+
+    plot_experiment('exp4_failure_rate',
+                    x_col='failure_rate', y_col='aggregation_completeness',
+                    x_label='Failure Rate', y_label='Aggregation Completeness',
+                    output_filename='graph4_failure_rate_completeness.png')
+
+    # Experiment 5: Loss Exposure
+    plot_experiment('exp5_loss_exposure',
+                    x_col='micro_slots', y_col='loss_exposure_fraction',
+                    x_label='Number of Micro-slots', y_label='Loss Exposure Fraction',
+                    output_filename='graph5_loss_exposure.png',
+                    legend_loc='upper right')
+
+    # Experiment 6: Recovery Communication
+    plot_experiment('exp6_recovery_comm',
+                    x_col='incomplete_micro_slots', y_col='communication_overhead_KB',
+                    x_label='Incomplete Micro-slots', y_label='Communication Overhead (KB)',
+                    output_filename='graph6_recovery_comm.png')
+
+if __name__ == '__main__':
+    main()

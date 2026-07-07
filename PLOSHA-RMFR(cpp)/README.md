@@ -161,3 +161,63 @@ This repository is designed for parallel teamwork. Each collaborator is responsi
 
 ### Do NOT skip the simulation
 - **Do NOT generate results analytically or mathematically** (e.g., computing expected latency from formulas in the paper) instead of running the discrete-event simulation. The entire purpose of this benchmark is to measure real execution behavior, not to recompute theoretical values.
+
+## Running the Full Benchmark
+
+To fully run the benchmark across all implemented schemes and generate the final comparison graphs, you can use the automated bash script, or run them manually.
+
+### Using the Automated Runner (Recommended)
+
+A central runner script is provided in the repository root to automate compiling, running all schemes (including setting up Gramine SGX for PLOSHA), and generating plots.
+
+Make sure the script has executable permissions and run it:
+```bash
+chmod +x run_benchmark.sh
+./run_benchmark.sh
+```
+
+### Running Manually
+
+If you prefer to run the benchmark manually step-by-step:
+
+#### 1. Execute Each Scheme
+For each scheme, navigate to its `src/` directory, compile the code, and run all experiments. Ensure the `--dataset` path correctly points to the shared `dataset/plosha_dataset.csv`.
+
+**Example for PLOSHA-RMFR (runs inside real Intel SGX enclave):**
+```bash
+cd schemes/plosha_rmfr/src
+make clean && make
+gramine-manifest --no-check -Dlog_level=error \
+  -Ddataset_dir="../../dataset" \
+  -Doutput_dir=".." \
+  plosha_rmfr.manifest.template plosha_rmfr.manifest
+# Note: If you don't have an SGX key yet, run 'gramine-sgx-gen-private-key' first
+gramine-sgx-sign --manifest plosha_rmfr.manifest --output plosha_rmfr.manifest.sgx
+gramine-sgx plosha_rmfr --experiment all --epochs 10 --dataset /dataset/plosha_dataset.csv --output /output
+```
+
+**Example for other baseline schemes (e.g., Ref[37]):**
+```bash
+cd schemes/fault_tolerant_workflow/src
+make clean && make
+./ftworkflow --experiment all --dataset ../../../dataset/plosha_dataset.csv
+```
+
+*(Repeat this process for `robust_iiot`, `fed_dqn`, and `ft_serverless_edge` using their respective executable names).*
+
+### 2. Generate the Plots
+Once all schemes have successfully generated their `results.csv` files in their respective `exp<N>_*/` directories, you can generate the final visual comparison graphs.
+
+First, ensure you have the required Python dependencies installed. If you encounter an `externally-managed-environment` error, you can safely use the `--break-system-packages` flag:
+```bash
+cd plots
+pip install pandas matplotlib --break-system-packages
+```
+
+Then, run the plotting script:
+```bash
+python3 generate_plots.py
+```
+
+### 3. View the Results
+The final graphs comparing all the executed schemes will be saved in the `plots/output/` directory as PNG files (e.g., `graph1_sensor_scalability_latency.png`).

@@ -1,0 +1,91 @@
+#ifndef FTWORKFLOW_CONFIG_HPP
+#define FTWORKFLOW_CONFIG_HPP
+
+#include <cstddef>
+#include <string>
+
+// ============================================================================
+// Fault-Tolerant Workflow Configuration — Ref[37] Ren & Yao, IEEE TSC 2026
+// "A Hybrid Fault-Tolerant Workflow Scheduling With Performance Fluctuated
+//  Cloud Resources"
+// ============================================================================
+
+namespace ftworkflow {
+
+// ---------------------------------------------------------------------------
+// Cryptographic Parameters (same as PLOSHA for fair comparison)
+// ---------------------------------------------------------------------------
+constexpr int PAILLIER_KEY_BITS    = 2048;
+constexpr int AES_KEY_BYTES        = 32;
+constexpr int AES_IV_BYTES         = 12;
+constexpr int AES_TAG_BYTES        = 16;
+constexpr int MAX_SENSOR_VALUE     = 65535;
+
+// ---------------------------------------------------------------------------
+// Performance Fluctuation Model (Ref[37] §III-A)
+// VM performance coefficient: p_j(t) ~ Uniform[p_min, p_max]
+// ---------------------------------------------------------------------------
+constexpr double PERF_COEFF_MIN    = 0.5;   // Minimum performance ratio
+constexpr double PERF_COEFF_MAX    = 1.0;   // Maximum performance ratio
+constexpr double PERF_EWMA_ALPHA   = 0.3;   // Smoothing for performance tracking
+
+// ---------------------------------------------------------------------------
+// Checkpointing Parameters (Ref[37] §III-B, Eq. 7-9)
+// C_ckpt = checkpoint_overhead_ratio * T_task
+// Optimal checkpoint interval: sqrt(2 * C_ckpt * MTBF)
+// ---------------------------------------------------------------------------
+constexpr double CHECKPOINT_OVERHEAD_RATIO = 0.05;  // 5% of task time
+constexpr double CHECKPOINT_RECOVERY_RATIO = 0.10;  // 10% recovery cost
+constexpr double CHECKPOINT_STORAGE_BYTES  = 4096;  // Checkpoint state size
+
+// ---------------------------------------------------------------------------
+// Replication Parameters (Ref[37] §III-C, Eq. 12-14)
+// Task replication triggered when failure probability > tau_rep
+// ---------------------------------------------------------------------------
+constexpr double TAU_REPLICATION    = 0.3;  // Failure probability threshold
+constexpr int    MAX_REPLICAS       = 3;    // Maximum replica count
+constexpr double REPLICATION_COMM_RATIO = 1.5; // Communication multiplier
+
+// ---------------------------------------------------------------------------
+// Workflow Scheduling (Ref[37] §IV)
+// Hybrid strategy selection: checkpoint if T_task > threshold, else replicate
+// ---------------------------------------------------------------------------
+constexpr double TASK_DURATION_THRESHOLD_MS = 50.0;  // Checkpoint vs replicate
+
+// Failure model: per-epoch failure rate per node
+// (adapted from Ref[37]'s Weibull/exponential failure distribution)
+constexpr double DEFAULT_NODE_MTBF = 100.0;  // Mean time between failures (epochs)
+
+// ---------------------------------------------------------------------------
+// Aggregation — flat single-slot (no micro-slot partitioning)
+// Ref[37] does NOT use hierarchical slot aggregation
+// ---------------------------------------------------------------------------
+constexpr double COMPLETENESS_THRESHOLD = 0.8;
+
+// ---------------------------------------------------------------------------
+// Simulation Defaults
+// ---------------------------------------------------------------------------
+constexpr int    DEFAULT_NUM_SENSORS    = 1000;
+constexpr int    DEFAULT_NUM_FOG_NODES  = 10;
+constexpr int    DEFAULT_NUM_EPOCHS     = 10;
+constexpr double DEFAULT_FAILURE_RATE   = 0.05;
+constexpr int    DEFAULT_WORKLOAD_MULT  = 1;
+
+// ---------------------------------------------------------------------------
+// Experiment Configuration
+// ---------------------------------------------------------------------------
+struct ExperimentConfig {
+    int experiment_id       = 0;
+    int num_sensors         = DEFAULT_NUM_SENSORS;
+    int num_fog_nodes       = DEFAULT_NUM_FOG_NODES;
+    int num_epochs          = DEFAULT_NUM_EPOCHS;
+    double failure_rate     = DEFAULT_FAILURE_RATE;
+    int workload_multiplier = DEFAULT_WORKLOAD_MULT;
+    int forced_micro_slots  = 0;      // For Exp 5/6 compatibility (always 1 slot)
+    std::string output_dir  = ".";
+    std::string dataset_path = "../../dataset/plosha_dataset.csv";
+};
+
+} // namespace ftworkflow
+
+#endif // FTWORKFLOW_CONFIG_HPP
