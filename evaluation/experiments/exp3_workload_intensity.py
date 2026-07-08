@@ -47,12 +47,19 @@ def run_experiment(output_dir: str = "results"):
     plosha_latencies = []
     for intensity in workload_levels:
         run_results = []
+        # Scale effective sensor count to reflect workload intensity.
+        # The framework processes all assigned sensors per epoch, so
+        # varying num_sensors is the correct way to increase processing
+        # load. Baselines compute N_s = int(num_sensors * workload_intensity),
+        # so effective_sensors with workload_intensity=1.0 gives the
+        # same result.
+        effective_sensors = max(100, int(num_sensors * intensity))
         for run in range(num_runs):
             config = SystemConfig(
-                num_sensors=num_sensors,
+                num_sensors=effective_sensors,
                 num_fog_nodes=fog_nodes,
                 num_epochs=num_epochs,
-                workload_intensity=intensity,
+                workload_intensity=1.0,
                 failure_rate=failure_rate,
                 random_seed=42 + run
             )
@@ -74,9 +81,11 @@ def run_experiment(output_dir: str = "results"):
     for scheme, _, _ in baselines:
         latencies = []
         for intensity in workload_levels:
+            # Use same effective sensor count as PLOSHA for consistency
+            effective_sensors = max(100, int(num_sensors * intensity))
             lat = scheme.aggregation_latency(
-                num_sensors, fog_nodes, failure_rate,
-                workload_intensity=intensity
+                effective_sensors, fog_nodes, failure_rate,
+                workload_intensity=1.0
             )
             latencies.append(lat)
         baseline_results[scheme.name] = latencies

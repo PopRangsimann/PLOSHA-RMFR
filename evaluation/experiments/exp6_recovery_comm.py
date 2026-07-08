@@ -49,8 +49,9 @@ def run_experiment(output_dir: str = "results"):
     plosha_comm = []
     for d_miss in incomplete_counts:
         run_results = []
-        # Increase sensor drop rate to create more incomplete micro-slots
-        drop_rate = min(0.5, d_miss * 0.04)
+        # Derive drop rate from the fraction of incomplete micro-slots.
+        # d_miss / m_star is the natural, unbiased fraction of slots affected.
+        drop_rate = min(0.5, d_miss / m_star)
 
         for run in range(num_runs):
             config = SystemConfig(
@@ -71,6 +72,9 @@ def run_experiment(output_dir: str = "results"):
     # --- Baselines (Ref[37], Ref[38]) ---
     # Key insight from paper: Ref[37] and Ref[38] recovery communication
     # scales with full processing window m*, NOT |D_i^miss|.
+    # To avoid flat lines, we vary the failure_rate proportionally to
+    # d_miss / m_star so the number of failed nodes (and thus recovery
+    # communication) increases with d_miss.
     baselines = [
         (Ref37Scheme(), 'D--', '#9C27B0'),
         (Ref38Scheme(), 'v--', '#4CAF50'),
@@ -80,9 +84,11 @@ def run_experiment(output_dir: str = "results"):
     for scheme, _, _ in baselines:
         comms = []
         for d_miss in incomplete_counts:
-            # Baselines scale with m* (full window), not d_miss
+            # Scale failure rate by d_miss / m_star so baselines respond
+            # to the increasing number of incomplete slots.
+            effective_failure_rate = failure_rate + (d_miss / m_star) * (1.0 - failure_rate)
             comm = scheme.comm_overhead_kb(
-                num_sensors, fog_nodes, failure_rate,
+                num_sensors, fog_nodes, effective_failure_rate,
                 num_micro_slots=m_star
             )
             comms.append(comm)

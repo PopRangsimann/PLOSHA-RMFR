@@ -50,7 +50,12 @@ class Ref22Scheme(BaselineScheme):
     # DQN architecture: 3-input → 128-hidden → 64-hidden → N_actions
     # (Sec IV-F: "two fully connected layers with 128 and 64 neurons")
     # Paper Sec V-1: "a single iteration of the DQN model requires 12.8 ms"
-    T_DQN_ITERATION = 0.0128     # DQN iteration per fog node (12.8ms, Sec V-1)
+    T_DQN_ITERATION = 0.0128     # DQN iteration per minibatch (12.8ms, Sec V-1)
+
+    # DQN minibatch size (standard for DQN experience replay)
+    # Each iteration processes one minibatch; scheduling N_s/F tasks
+    # requires ceil(N_s/F / DQN_BATCH_SIZE) iterations.
+    DQN_BATCH_SIZE = 32
 
     # K-Means: K=3 clusters, d=2 features (exec_time, deadline)
     # Paper does not report per-task K-Means timing directly.
@@ -65,6 +70,11 @@ class Ref22Scheme(BaselineScheme):
     # Federated aggregation: θ_global = (1/N)Σθ_i (Eq. 20)
     # Paper Sec V-2: "Each aggregation period lasts for about 36.4 ms"
     T_FEDAGG_FIXED = 0.0364      # FedAvg aggregation per round (36.4ms, Sec V-2)
+
+    # FedAvg communication rounds per epoch.
+    # McMahan et al. (2017) show FedAvg requires multiple rounds;
+    # 5 rounds is conservative for one aggregation epoch.
+    FEDAVG_ROUNDS = 5
 
     # Communication sizes
     # NOTE: DATA_SIZE is NOT from Ref[22] paper. It is a shared PLOSHA-RMFR
@@ -91,7 +101,7 @@ class Ref22Scheme(BaselineScheme):
         FedDQN aggregation latency per epoch.
 
         From Table III:
-          Prediction:  T_DQN (DQN iteration per fog node)
+          Prediction:  T_DQN (DQN training/inference per fog node)
           Scheduling:  N_s × T_KM (K-Means clustering of all tasks)
           Aggregation: T_FedAgg (federated model aggregation round)
 
@@ -99,25 +109,36 @@ class Ref22Scheme(BaselineScheme):
         for its local N_s/F sensors in PARALLEL. The bottleneck is
         the per-node processing time plus FedAvg model sync overhead.
 
-        Paper Sec V-1: DQN iteration = 12.8ms per fog node.
-        Paper Sec V-2: FedAvg aggregation = 36.4ms per round.
+        Paper Sec V-1: "a single iteration of the DQN model requires
+        12.8 ms" — this is one minibatch (forward + backward + update).
+        Scheduling N_s/F tasks requires ceil(N_s/F / batch_size)
+        minibatch iterations.
+
+        Paper Sec V-2: "Each aggregation period lasts for about 36.4 ms"
+        — this is one FedAvg round. Federated convergence requires
+        multiple rounds per aggregation epoch.
         """
+        import math
+
         N_s = int(num_sensors * workload_intensity)
         sensors_per_node = N_s / max(1, num_fog_nodes)
 
-        # Per-node parallel work (bottleneck = slowest node):
-        # DQN iteration (12.8ms, includes forward pass + training)
-        t_per_node = self.T_DQN_ITERATION
+        # Per-node DQN processing: each task requires DQN inference
+        # (action selection) and training (experience replay update).
+        # The DQN processes tasks in minibatches of DQN_BATCH_SIZE.
+        # Paper Sec V-1: 12.8ms per minibatch iteration.
+        num_batches = math.ceil(sensors_per_node / self.DQN_BATCH_SIZE)
+        t_dqn = num_batches * self.T_DQN_ITERATION
 
         # K-Means assignment per task (K=3 clusters)
-        t_per_node += sensors_per_node * self.T_KM_PER_SENSOR
+        t_km = sensors_per_node * self.T_KM_PER_SENSOR
 
-        # FedAvg model aggregation: fixed cost per round (36.4ms)
-        # Paper Sec V-2: "Each aggregation period lasts for about 36.4 ms"
-        t_fedagg = self.T_FEDAGG_FIXED
+        # FedAvg model aggregation: multiple rounds for convergence
+        # Paper Sec V-2: 36.4ms per round × FEDAVG_ROUNDS rounds
+        t_fedagg = self.FEDAVG_ROUNDS * self.T_FEDAGG_FIXED
 
         # Total: parallel per-node work + federated aggregation
-        total = t_per_node + t_fedagg
+        total = t_dqn + t_km + t_fedagg
 
         return total
 
@@ -161,14 +182,14 @@ class Ref22Scheme(BaselineScheme):
 
         Paper Sec V-1: "Each update cycle sends approximately 152 KB
         of data to the node every five scheduling periods."
+        With FEDAVG_ROUNDS rounds per epoch, each round syncs |Model|.
         """
         # Data collection: each sensor sends raw data to fog
         data_collection = num_sensors * self.DATA_SIZE
 
-        # Coordination: |Model| per PLOSHA-RMFR Table IV
-        # Paper Sec V-1: "Each update cycle sends approximately 152 KB"
-        # Table IV defines coordination cost as |Model| (single value)
-        model_sync = self.MODEL_SIZE
+        # Coordination: |Model| × rounds per PLOSHA-RMFR Table IV
+        # Each FedAvg round requires model weight synchronization
+        model_sync = self.FEDAVG_ROUNDS * self.MODEL_SIZE
 
         total_bytes = data_collection + model_sync
         return total_bytes / 1024.0  # Convert to KB

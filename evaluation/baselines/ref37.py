@@ -152,7 +152,11 @@ class Ref37Scheme(BaselineScheme):
         Recovery scales with full processing window.
         """
         J, N_in, M, N_M = self._workflow_params(num_sensors, num_fog_nodes)
-        failed_nodes = max(1, int(num_fog_nodes * failure_rate))
+        # Use continuous expected value for smooth scaling.
+        # E[failed_nodes] = num_fog_nodes × failure_rate
+        failed_nodes = num_fog_nodes * failure_rate
+        if failed_nodes < 1e-9:
+            return 0.0
 
         # Online Scheduling: O((J + N_in) × M × N_M)
         t_online_sch = (J + N_in) * M * N_M * self.T_SCHEDULE_COEFF
@@ -230,7 +234,7 @@ class Ref37Scheme(BaselineScheme):
 
         # Recovery: m* × |State| — full processing window
         # This is a KEY disadvantage: recovery comm scales with m*, not |D_miss|
-        failed_nodes = max(1, int(num_fog_nodes * failure_rate))
+        failed_nodes = num_fog_nodes * failure_rate
         recovery_comm = num_micro_slots * self.STATE_SIZE * failed_nodes
 
         total_bytes = data_collection + coordination + recovery_comm
