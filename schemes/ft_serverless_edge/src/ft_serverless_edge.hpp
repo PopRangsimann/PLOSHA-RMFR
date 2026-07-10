@@ -19,6 +19,10 @@
 #include <unordered_map>
 #include <limits>
 #include <cmath>
+#include <chrono>
+#include <cstdint>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
 
 // ─── Constants from paper §VI-A ────────────────────────────────────────────
 
@@ -157,6 +161,15 @@ public:
 private:
     SimConfig cfg_;
     std::mt19937 rng_;
+
+    // Real crypto state (for fair wall-clock comparison)
+    std::vector<uint8_t> aes_key_;
+    bool crypto_initialized_ = false;
+    void initCrypto();
+    int aesEncryptInPlace(const uint8_t* plaintext, int len, uint8_t* out);
+
+    // Per-cloudlet load tracking for queueing model
+    std::vector<int> cloudlet_load_;
 
     // SEC network
     int num_cloudlets_;

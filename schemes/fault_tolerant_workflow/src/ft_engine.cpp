@@ -97,7 +97,7 @@ EpochMetrics FTEngine::runEpoch(const ExperimentConfig& config,
 
         // Estimate Task Duration
         double T_task_est = (queued_readings.size() * beta_t_calibrated_ * 1000.0) / state.perf_coeff;
-        bool use_checkpoint = (T_task_est > TASK_DURATION_THRESHOLD_MS);
+        bool use_resubmission = (T_task_est < TASK_DURATION_THRESHOLD_MS);
 
         auto start = std::chrono::high_resolution_clock::now();
 
@@ -116,27 +116,6 @@ EpochMetrics FTEngine::runEpoch(const ExperimentConfig& config,
             
             // Adjust for performance coefficient
             latency_ms /= state.perf_coeff;
-            
-            if (use_checkpoint) {
-                latency_ms += latency_ms * CHECKPOINT_OVERHEAD_RATIO;
-            }
-
-            // Replication maintenance overhead (Ref[37] §III-C):
-            // Even without failures, the hybrid FT model proactively replicates
-            // each task to a backup node. This requires encrypting and transferring
-            // replica state. We model this by performing additional TEE transforms
-            // for a fraction of readings (replication verification on the backup).
-            // The fraction is 1/MAX_REPLICAS of the original readings.
-            int replica_verify_count = std::max(1, static_cast<int>(queued_readings.size()) / MAX_REPLICAS);
-            auto rep_start = std::chrono::high_resolution_clock::now();
-            for (int rv = 0; rv < replica_verify_count; ++rv) {
-                int idx = rv % static_cast<int>(queued_readings.size());
-                crypto_.teeTransform(fog_aes_key, queued_readings[idx].aes_ct);
-            }
-            auto rep_end = std::chrono::high_resolution_clock::now();
-            double replication_overhead_ms = std::chrono::duration<double, std::milli>(rep_end - rep_start).count();
-            replication_overhead_ms /= state.perf_coeff;
-            latency_ms += replication_overhead_ms;
 
             total_agg_latency += latency_ms;
             total_completeness += 1.0;
@@ -148,20 +127,18 @@ EpochMetrics FTEngine::runEpoch(const ExperimentConfig& config,
             double rec_latency = 0.0;
             double comm_bytes = 0.0;
             
-            if (use_checkpoint) {
-                // Checkpoint Recovery
-                // Assume it fails halfway. We pay to transfer checkpoint & recompute half.
-                comm_bytes += CHECKPOINT_STORAGE_BYTES;
-                rec_latency += T_task_est * CHECKPOINT_RECOVERY_RATIO; // Time to restore
-                rec_latency += (T_task_est / 2.0); // Re-execute remaining
+            if (use_resubmission) {
+                // Resubmission Recovery
+                // Task must be completely re-executed from scratch on a new node.
+                comm_bytes += queued_readings.size() * 128 * REPLICATION_COMM_RATIO;
+                rec_latency += T_task_est; // Re-execute full task
                 
-                // Do the crypto to simulate time
-                int half = queued_readings.size() / 2;
-                for (int i = half; i < (int)queued_readings.size(); ++i) {
-                    pcts.push_back(crypto_.teeTransform(fog_aes_key, queued_readings[i].aes_ct));
+                // Do the crypto to simulate full re-execution time
+                for (const auto& reading : queued_readings) {
+                    pcts.push_back(crypto_.teeTransform(fog_aes_key, reading.aes_ct));
                 }
                 if (!pcts.empty()) {
-                    PaillierCiphertext partial_agg = crypto_.aggregateMultiple(pcts);
+                    PaillierCiphertext agg = crypto_.aggregateMultiple(pcts);
                 }
             } else {
                 // Replication Recovery

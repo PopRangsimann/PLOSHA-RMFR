@@ -9,11 +9,28 @@ ROOT_DIR=$(pwd)
 DATASET_PATH="$ROOT_DIR/dataset/plosha_dataset.csv"
 
 # ---------------------------------------------------------
-# 1. PLOSHA-RMFR (Intel SGX)
+# 1a. PLOSHA-RMFR (Native — for fair comparison with baselines)
 # ---------------------------------------------------------
-echo "[1/5] Running PLOSHA-RMFR (Ours) in Intel SGX..."
+echo "[1/5] Running PLOSHA-RMFR (Ours) — Native mode..."
 cd "$ROOT_DIR/schemes/plosha_rmfr/src"
 make clean && make
+echo "  -> Executing natively (all experiments)..."
+./plosha_rmfr --experiment all --epochs 10 --dataset "$DATASET_PATH" --output "$ROOT_DIR/schemes/plosha_rmfr"
+echo "✔ PLOSHA-RMFR (native) completed."
+echo ""
+
+# ---------------------------------------------------------
+# 1b. PLOSHA-RMFR (Intel SGX — for SGX overhead comparison)
+# ---------------------------------------------------------
+echo "[1b/5] Running PLOSHA-RMFR (Ours) in Intel SGX..."
+# Copy native results to backup before SGX overwrites them
+for d in exp1_sensor_scalability exp2_fog_scalability exp3_workload_intensity exp4_failure_rate exp5_loss_exposure exp6_recovery_comm exp7_aflto; do
+  if [ -d "$ROOT_DIR/schemes/plosha_rmfr/$d" ]; then
+    mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/${d}_native"
+    cp -r "$ROOT_DIR/schemes/plosha_rmfr/$d/"* "$ROOT_DIR/schemes/plosha_rmfr/${d}_native/" 2>/dev/null || true
+  fi
+done
+
 gramine-manifest --no-check -Dlog_level=error \
   -Ddataset_dir="$ROOT_DIR/dataset" \
   -Doutput_dir="$ROOT_DIR/schemes/plosha_rmfr" \
@@ -30,7 +47,7 @@ gramine-sgx-sign --manifest plosha_rmfr.manifest --output plosha_rmfr.manifest.s
 
 echo "  -> Executing via Gramine-SGX (all experiments)..."
 gramine-sgx plosha_rmfr --experiment all --epochs 10 --dataset /dataset/plosha_dataset.csv --output /output
-echo "✔ PLOSHA-RMFR completed."
+echo "✔ PLOSHA-RMFR (SGX) completed."
 echo ""
 
 # ---------------------------------------------------------

@@ -8,6 +8,7 @@
 #include <cassert>
 #include <iomanip>
 #include <limits>
+#include <cstring>
 
 // ============================================================================
 // QTable Implementation
@@ -49,21 +50,40 @@ void QTable::Update(const std::vector<double>& state, int action, double target,
 // ============================================================================
 
 FedDQNSimulation::FedDQNSimulation()
-    : num_fog_nodes_(5),
-      num_vms_per_node_(4),
-      num_sensors_(1000),
-      gamma_(0.95),
-      epsilon_(1.0),
-      epsilon_min_(0.01),
-      epsilon_decay_(0.995),
-      alpha_(0.001),
-      batch_size_(32),
-      target_update_freq_(10),
-      num_episodes_(10),
-      federated_period_(5),
-      failure_rate_(0.0)
-{
-    rng_.seed(std::chrono::steady_clock::now().time_since_epoch().count());
+    : num_fog_nodes_(10), num_vms_per_node_(4), num_sensors_(1000),
+      gamma_(0.95), epsilon_(1.0), epsilon_min_(0.01), epsilon_decay_(0.995),
+      alpha_(0.001), batch_size_(32), target_update_freq_(10),
+      num_episodes_(10), federated_period_(5), failure_rate_(0.0),
+      rng_(42) {}
+
+// ============================================================================
+// Crypto Initialization (for fair wall-clock comparison)
+// ============================================================================
+
+void FedDQNSimulation::initCrypto() {
+    if (crypto_initialized_) return;
+    aes_key_.resize(32); // AES-256
+    RAND_bytes(aes_key_.data(), 32);
+    crypto_initialized_ = true;
+}
+
+int FedDQNSimulation::aesEncryptInPlace(const uint8_t* plaintext, int plaintext_len,
+                                         uint8_t* ciphertext_out) {
+    uint8_t iv[12];
+    RAND_bytes(iv, 12);
+
+    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr);
+    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, 12, nullptr);
+    EVP_EncryptInit_ex(ctx, nullptr, nullptr, aes_key_.data(), iv);
+    int out_len = 0;
+    EVP_EncryptUpdate(ctx, ciphertext_out, &out_len, plaintext, plaintext_len);
+    int final_len = 0;
+    EVP_EncryptFinal_ex(ctx, ciphertext_out + out_len, &final_len);
+    uint8_t tag[16];
+    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag);
+    EVP_CIPHER_CTX_free(ctx);
+    return out_len + final_len;
 }
 
 // ============================================================================
@@ -502,6 +522,9 @@ void FedDQNSimulation::RecoverFromFailure(int node_id, int& recovery_count,
 FedDQNMetrics FedDQNSimulation::Run() {
     FedDQNMetrics metrics = {};
 
+    // Initialize real crypto (AES-256-GCM)
+    initCrypto();
+
     // Prepare tasks
     ParseDatasetToTasks(num_sensors_);
 
@@ -606,8 +629,22 @@ FedDQNMetrics FedDQNSimulation::Run() {
             // Schedule task on VM
             task.start_time = std::max(task.arrival_time, vm.available_time);
 
-            // Execution time depends on VM capacity
-            double actual_exec = task.execution_time * (1000.0 / vm.cpu_capacity);
+            // Real crypto: AES-GCM encrypt the sensor reading data
+            // This models the encrypted task processing that each VM performs
+            uint32_t sensor_value = static_cast<uint32_t>(task.cpu_requirement * 1000);
+            uint8_t plaintext[sizeof(uint32_t)];
+            std::memcpy(plaintext, &sensor_value, sizeof(uint32_t));
+            uint8_t ciphertext[sizeof(uint32_t) + 16]; // room for padding
+
+            auto crypto_start = std::chrono::high_resolution_clock::now();
+            aesEncryptInPlace(plaintext, sizeof(uint32_t), ciphertext);
+            auto crypto_end = std::chrono::high_resolution_clock::now();
+            double crypto_ms = std::chrono::duration<double, std::milli>(crypto_end - crypto_start).count();
+
+            // Execution time: real crypto cost scaled by VM capacity
+            // Slower VMs (lower MIPS) take proportionally longer
+            double capacity_factor = 1000.0 / vm.cpu_capacity;
+            double actual_exec = crypto_ms * capacity_factor;
             task.completion_time = task.start_time + actual_exec;
 
             // Update VM

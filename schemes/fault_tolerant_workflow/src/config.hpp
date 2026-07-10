@@ -30,14 +30,6 @@ constexpr double PERF_COEFF_MAX    = 1.0;   // Maximum performance ratio
 constexpr double PERF_EWMA_ALPHA   = 0.3;   // Smoothing for performance tracking
 
 // ---------------------------------------------------------------------------
-// Checkpointing Parameters (Ref[37] §III-B, Eq. 7-9)
-// C_ckpt = checkpoint_overhead_ratio * T_task
-// Optimal checkpoint interval: sqrt(2 * C_ckpt * MTBF)
-// ---------------------------------------------------------------------------
-constexpr double CHECKPOINT_OVERHEAD_RATIO = 0.05;  // 5% of task time
-constexpr double CHECKPOINT_RECOVERY_RATIO = 0.10;  // 10% recovery cost
-constexpr double CHECKPOINT_STORAGE_BYTES  = 4096;  // Checkpoint state size
-
 // ---------------------------------------------------------------------------
 // Replication Parameters (Ref[37] §III-C, Eq. 12-14)
 // Task replication triggered when failure probability > tau_rep
@@ -48,9 +40,9 @@ constexpr double REPLICATION_COMM_RATIO = 1.5; // Communication multiplier
 
 // ---------------------------------------------------------------------------
 // Workflow Scheduling (Ref[37] §IV)
-// Hybrid strategy selection: checkpoint if T_task > threshold, else replicate
+// Hybrid strategy selection: resubmit if T_task < threshold, else replicate
 // ---------------------------------------------------------------------------
-constexpr double TASK_DURATION_THRESHOLD_MS = 50.0;  // Checkpoint vs replicate
+constexpr double TASK_DURATION_THRESHOLD_MS = 50.0;  // Resubmit vs replicate
 
 // Failure model: per-epoch failure rate per node
 // (adapted from Ref[37]'s Weibull/exponential failure distribution)

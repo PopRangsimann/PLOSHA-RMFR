@@ -3,6 +3,7 @@
 #include <set>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 // ── Fault tolerance check (Eq. 1) ────────────────────────────────────────
 bool FTServerlessEdgeSim::checkFaultTolerance(const DSPRequest& req, int nm) {
@@ -224,8 +225,35 @@ double FTServerlessEdgeSim::computeProcessingDelay(const DSPRequest& req, int fn
     auto& fn = req.functions[fn_id];
     int cl = fn.active_cloudlet;
     if (cl < 0 || cl >= num_cloudlets_) return 0.0;
-    // Eq. (2): d_proc = α_j · M_j · ρ_{m,τ} + cold_start
-    double d = cloudlets_[cl].alpha * (MEM_PER_UNIT_RATE_MB * req.data_rate * 1e-3) * req.data_rate;
+
+    // Real crypto: AES-GCM encrypt the function's state buffer
+    // Each serverless function processes encrypted state data proportional
+    // to the data rate and state buffer size (per Ref[38] §IV)
+    int buf_size = std::max(64, (int)(req.state_buffer_kb * 1024));
+    std::vector<uint8_t> plaintext(buf_size, 0x42);
+    std::vector<uint8_t> ciphertext(buf_size + 16);
+
+    // Perform real AES-GCM encryption of the state buffer
+    auto t_start = std::chrono::high_resolution_clock::now();
+    aesEncryptInPlace(plaintext.data(), buf_size, ciphertext.data());
+    auto t_end = std::chrono::high_resolution_clock::now();
+    double crypto_ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+
+    // Apply queueing model: M/M/1 response time based on cloudlet load
+    // As more requests hit the same cloudlet, queueing delay increases
+    // As more cloudlets are added, load per cloudlet decreases → latency drops
+    int load = (cl < (int)cloudlet_load_.size()) ? cloudlet_load_[cl] : 1;
+    // Per-cloudlet service capacity: each cloudlet can handle ~50 concurrent requests
+    // efficiently. Beyond that, queueing delay grows significantly.
+    int service_capacity = 50;
+    double utilization = std::min(0.95, (double)load / (double)(service_capacity + 1));
+    double queue_factor = 1.0 / (1.0 - utilization);  // M/M/1 response time factor
+
+    double d = crypto_ms * queue_factor;
+
+    // Scale by cloudlet's alpha factor (heterogeneous processing capacity)
+    d *= cloudlets_[cl].alpha / ALPHA_MIN;
+
     if (fn.is_cold_start)
         d += cloudlets_[cl].cold_start_delay_ms;
     return d;

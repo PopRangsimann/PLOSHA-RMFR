@@ -9,6 +9,9 @@
 #include <chrono>
 #include <deque>
 #include <tuple>
+#include <cstdint>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
 #include <functional>
 
 // ============================================================================
@@ -133,6 +136,14 @@ private:
 
     // RNG
     std::mt19937 rng_;
+
+    // Real crypto state (for fair wall-clock comparison)
+    std::vector<uint8_t> aes_key_;      // AES-256-GCM key
+    bool crypto_initialized_ = false;
+    void initCrypto();
+    // AES-GCM encrypt: returns total bytes of ciphertext produced
+    int aesEncryptInPlace(const uint8_t* plaintext, int plaintext_len,
+                          uint8_t* ciphertext_out);
 
     // Internal methods
     void ParseDatasetToTasks(int num_tasks);

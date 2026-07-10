@@ -1,9 +1,9 @@
 # Makefile for FedDQN (Ref[22]) — Adaptive Task Scheduling Scheme
-# No external crypto dependencies (pure scheduling simulation)
+# Now includes OpenSSL for real AES-GCM crypto (fair wall-clock comparison)
 
 CXX = g++
 CXXFLAGS = -std=c++17 -O2 -Wall -Wextra
-LDFLAGS =
+LDFLAGS = -lssl -lcrypto -lpthread
 
 # Simulation engine
 SIM_SRCS = fed_dqn_sim.cpp
