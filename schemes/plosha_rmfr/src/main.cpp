@@ -7,9 +7,9 @@
 using namespace plosha;
 
 void printUsage(const char* prog) {
-    std::cout << "Usage: " << prog << " --experiment <1-7|all> [options]\n"
+    std::cout << "Usage: " << prog << " --experiment <1-9|all> [options]\n"
               << "\nOptions:\n"
-              << "  --experiment <N|all>   Experiment number (1-7) or 'all'\n"
+              << "  --experiment <N|all>   Experiment number (1-9) or 'all'\n"
               << "  --sensors <N>          Number of sensors (default: 1000)\n"
               << "  --fog-nodes <N>        Number of fog nodes (default: 10)\n"
               << "  --epochs <N>           Number of epochs (default: 10)\n"

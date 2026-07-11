@@ -19,6 +19,7 @@ struct AggregationResult {
     double completeness_V = 0.0;                  // V_i(t) = N_recv / N_exp
     bool completeness_flag = true;                 // Φ_i(t) = (V >= τ_v)
     double aggregation_latency_ms = 0.0;          // Wall-clock time for Phase III
+    double processing_overhead_ms = 0.0;          // Time for TEE transform + micro-slot agg only
 };
 
 class PLOSHAEngine {
@@ -43,7 +44,8 @@ public:
                                 double beta_t_calibrated,
                                 double tau_v,
                                 double reliability,
-                                int forced_m_star = 0);  // >0 bypasses optimizer (Exp 5)
+                                int forced_m_star = 0,
+                                bool hierarchical = true);  // false = skip fog-level hierarchy
 };
 
 } // namespace plosha

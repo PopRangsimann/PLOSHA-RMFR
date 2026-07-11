@@ -95,8 +95,11 @@ def get_data(exp_dir_name):
 
 def plot_experiment(exp_name, x_col, y_col, x_label, y_label, output_filename,
                     x_scale='linear', y_scale='linear', legend_loc='upper left',
-                    x_lim=None):
+                    x_lim=None, exclude_schemes=None):
     """Generate a plot for a specific experiment and metric."""
+    if exclude_schemes is None:
+        exclude_schemes = []
+
     data = get_data(exp_name)
     if not data:
         print(f"No data found for experiment {exp_name}")
@@ -105,6 +108,8 @@ def plot_experiment(exp_name, x_col, y_col, x_label, y_label, output_filename,
     fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
 
     for scheme_id, df in data.items():
+        if scheme_id in exclude_schemes:
+            continue
         if x_col in df.columns and y_col in df.columns:
             plot_df = df
             # Clip data to x_lim range if specified
@@ -182,7 +187,8 @@ def main():
                     x_col='micro_slots', y_col='loss_exposure_fraction',
                     x_label='Number of Micro-slots', y_label='Loss Exposure Fraction',
                     output_filename='graph5_loss_exposure.png',
-                    legend_loc='upper right')
+                    legend_loc='upper right',
+                    exclude_schemes=['ft_serverless_edge'])
 
     # Experiment 6: Recovery Communication
     plot_experiment('exp6_recovery_comm',
@@ -192,6 +198,12 @@ def main():
 
     # Experiment 7: AFLTO Ablation (PLOSHA only — grouped bar chart)
     plot_exp7_aflto_ablation()
+
+    # Experiment 8: Ablation of PLOSHA Aggregation Architecture (Fig. 2 in new.md)
+    plot_exp8_ablation_aggregation()
+
+    # Experiment 9: Scheduling Efficiency (Fig. 3 in new.md)
+    plot_exp9_scheduling_efficiency()
 
 
 def plot_exp7_aflto_ablation():
@@ -269,6 +281,132 @@ def plot_exp7_aflto_ablation():
     fig.tight_layout()
 
     out_path = OUTPUT_DIR / 'graph7_aflto_ablation.png'
+    fig.savefig(out_path, bbox_inches='tight')
+    print(f"Generated {out_path}")
+    plt.close(fig)
+
+
+def plot_exp8_ablation_aggregation():
+    """Generate a 3-subplot figure for the PLOSHA aggregation ablation study.
+
+    Compares Flat-Epoch, Fixed-Slot, Adaptive-Slot, and Full PLOSHA
+    across aggregation latency, processing overhead, and loss exposure.
+    """
+    csv_path = BASE_DIR / 'plosha_rmfr' / 'exp8_ablation_aggregation' / 'results.csv'
+    if not csv_path.exists():
+        print(f"No data found for experiment exp8_ablation_aggregation")
+        return
+
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception as e:
+        print(f"Error reading {csv_path}: {e}")
+        return
+
+    # Ablation variant definitions
+    VARIANTS = {
+        'flat_epoch':    {'label': 'Flat-Epoch',    'color': '#d62728', 'marker': 'X'},
+        'fixed_slot':    {'label': 'Fixed-Slot',    'color': '#ff7f0e', 'marker': 's'},
+        'adaptive_slot': {'label': 'Adaptive-Slot', 'color': '#2ca02c', 'marker': '^'},
+        'full_plosha':   {'label': 'Full PLOSHA',   'color': '#1f77b4', 'marker': 'o'},
+    }
+
+    subplots_cfg = [
+        ('aggregation_latency_ms',  'Aggregation Latency (ms)'),
+        ('processing_overhead_ms',  'Processing Overhead (ms)'),
+        ('loss_exposure_fraction',  'Loss Exposure Fraction'),
+    ]
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), dpi=300)
+
+    for ax, (y_col, y_label) in zip(axes, subplots_cfg):
+        for variant_id, info in VARIANTS.items():
+            sub = df[df['variant'] == variant_id]
+            ax.plot(sub['num_sensors'], sub[y_col],
+                    label=info['label'], color=info['color'],
+                    marker=info['marker'], linewidth=2.5, markersize=8, zorder=3)
+        ax.set_xlabel('Number of Sensors')
+        ax.set_ylabel(y_label)
+        setup_axes(ax)
+
+    # Single shared legend at the top
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='upper center', ncol=4, frameon=True,
+              bbox_to_anchor=(0.5, 1.02))
+    fig.tight_layout(rect=[0, 0, 1, 0.94])
+
+    out_path = OUTPUT_DIR / 'graph8_ablation_aggregation.png'
+    fig.savefig(out_path, bbox_inches='tight')
+    print(f"Generated {out_path}")
+    plt.close(fig)
+
+
+def plot_exp9_scheduling_efficiency():
+    """Generate a 2-subplot figure for scheduling efficiency.
+
+    Compares PLOSHA-RMFR with FedDQN, FT-Workflow, and FT-Serverless-Edge
+    on scheduling latency and workload imbalance.
+    """
+    # Schemes to compare for this experiment
+    exp9_schemes = {
+        'plosha_rmfr':              SCHEMES['plosha_rmfr'],
+        'fed_dqn':                  SCHEMES['fed_dqn'],
+        'fault_tolerant_workflow':  SCHEMES['fault_tolerant_workflow'],
+        'ft_serverless_edge':       SCHEMES['ft_serverless_edge'],
+    }
+
+    # Load data for each scheme
+    data = {}
+    for scheme_id, info in exp9_schemes.items():
+        csv_path = BASE_DIR / scheme_id / 'exp9_scheduling_efficiency' / 'results.csv'
+        if csv_path.exists():
+            try:
+                df = pd.read_csv(csv_path)
+                # Normalise column names from generic format
+                if 'variable_value' in df.columns:
+                    df = df.rename(columns={
+                        'variable_value': 'num_fog_nodes',
+                        'primary_metric': 'scheduling_latency_ms',
+                        'secondary_metric_1': 'workload_imbalance',
+                    })
+                data[scheme_id] = df
+            except Exception as e:
+                print(f"Error reading {csv_path}: {e}")
+
+    if not data:
+        print("No data found for experiment exp9_scheduling_efficiency")
+        return
+
+    subplots_cfg = [
+        ('scheduling_latency_ms', 'Scheduling Latency (ms)'),
+        ('workload_imbalance',    'Workload Imbalance ($I_W$)'),
+    ]
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5), dpi=300)
+
+    for ax, (y_col, y_label) in zip(axes, subplots_cfg):
+        for scheme_id, df in data.items():
+            if y_col not in df.columns:
+                continue
+            info = exp9_schemes[scheme_id]
+            ax.plot(df['num_fog_nodes'], df[y_col],
+                    label=info['label'], color=info['color'],
+                    marker=info['marker'], linewidth=2.5, markersize=8,
+                    zorder=5 if scheme_id == 'plosha_rmfr' else 3)
+        ax.set_xlabel('Number of Fog Nodes')
+        ax.set_ylabel(y_label)
+        setup_axes(ax)
+
+    # Shared legend — Refs first, then Ours
+    handles, labels = axes[0].get_legend_handles_labels()
+    sorted_pairs = sorted(zip(handles, labels),
+                          key=lambda p: (1 if 'Ours' in p[1] else 0, p[1]))
+    handles_sorted, labels_sorted = zip(*sorted_pairs)
+    fig.legend(handles_sorted, labels_sorted, loc='upper center', ncol=4,
+              frameon=True, bbox_to_anchor=(0.5, 1.02))
+    fig.tight_layout(rect=[0, 0, 1, 0.94])
+
+    out_path = OUTPUT_DIR / 'graph9_scheduling_efficiency.png'
     fig.savefig(out_path, bbox_inches='tight')
     print(f"Generated {out_path}")
     plt.close(fig)

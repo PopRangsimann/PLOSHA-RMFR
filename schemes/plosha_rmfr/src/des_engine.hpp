@@ -20,10 +20,10 @@ class DESEngine {
 public:
     DESEngine();
 
-    // Run a single experiment (1-7) with the given configuration
+    // Run a single experiment (1-9) with the given configuration
     void runExperiment(const ExperimentConfig& config);
 
-    // Run all 7 experiments sequentially
+    // Run all 9 experiments sequentially
     void runAll(const ExperimentConfig& base_config);
 
 private:
@@ -62,6 +62,8 @@ private:
     void runExp5_LossExposure(const ExperimentConfig& config);
     void runExp6_RecoveryComm(const ExperimentConfig& config);
     void runExp7_AFLTOAblation(const ExperimentConfig& config);
+    void runExp8_AblationAggregation(const ExperimentConfig& config);
+    void runExp9_SchedulingEfficiency(const ExperimentConfig& config);
 
     // Helper: run a parameter sweep
     struct SweepConfig {

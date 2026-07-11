@@ -225,6 +225,7 @@ private:
     SimResult runExp4_FailureRate();
     SimResult runExp5_LossExposure();
     SimResult runExp6_RecoveryComm();
+    SimResult runExp9_SchedulingEfficiency();
 
     // ─ Helpers ─
     int    randInt(int lo, int hi);

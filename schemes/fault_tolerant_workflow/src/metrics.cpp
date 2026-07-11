@@ -25,6 +25,8 @@ SweepPointResult MetricsCollector::computeAverages(double variable_value) const 
         result.avg_system_availability += m.system_availability;
         result.avg_queue_utilization += m.queue_utilization;
         result.avg_recovery_frequency += m.recovery_frequency;
+        result.avg_scheduling_latency += m.scheduling_latency_ms;
+        result.avg_workload_imbalance += m.workload_imbalance;
     }
     result.avg_aggregation_latency /= n;
     result.avg_recovery_latency /= n;
@@ -34,6 +36,8 @@ SweepPointResult MetricsCollector::computeAverages(double variable_value) const 
     result.avg_system_availability /= n;
     result.avg_queue_utilization /= n;
     result.avg_recovery_frequency /= n;
+    result.avg_scheduling_latency /= n;
+    result.avg_workload_imbalance /= n;
     return result;
 }
 

@@ -16,6 +16,8 @@ struct EpochMetrics {
     double system_availability = 0.0;
     double queue_utilization = 0.0;
     int recovery_frequency = 0;
+    double scheduling_latency_ms = 0.0;
+    double workload_imbalance = 0.0;
 };
 
 struct SweepPointResult {
@@ -28,6 +30,8 @@ struct SweepPointResult {
     double avg_system_availability = 0.0;
     double avg_queue_utilization = 0.0;
     double avg_recovery_frequency = 0.0;
+    double avg_scheduling_latency = 0.0;
+    double avg_workload_imbalance = 0.0;
 };
 
 class MetricsCollector {

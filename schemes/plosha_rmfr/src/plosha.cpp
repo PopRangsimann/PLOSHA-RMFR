@@ -59,7 +59,8 @@ AggregationResult PLOSHAEngine::aggregate(CryptoWrapper& crypto,
                                            double beta_t_calibrated,
                                            double tau_v,
                                            double reliability,
-                                           int forced_m_star) {
+                                           int forced_m_star,
+                                           bool hierarchical) {
     auto start = std::chrono::high_resolution_clock::now();
     AggregationResult result;
 
@@ -93,8 +94,20 @@ AggregationResult PLOSHAEngine::aggregate(CryptoWrapper& crypto,
         result.micro_aggs.push_back(crypto.aggregateMultiple(paillier_cts));
     }
 
+    // Track processing overhead (TEE transform + micro-slot aggregate, before hierarchy)
+    auto overhead_end = std::chrono::high_resolution_clock::now();
+    result.processing_overhead_ms = std::chrono::duration<double, std::milli>(overhead_end - start).count();
+
     // Step 5: Aggregate fog-level (hierarchical product of micro-slot aggregates)
-    result.C_agg = crypto.aggregateMultiple(result.micro_aggs);
+    if (hierarchical) {
+        result.C_agg = crypto.aggregateMultiple(result.micro_aggs);
+    } else {
+        // Non-hierarchical: treat each micro-slot independently (no fog-level merge)
+        // Use the first micro-slot aggregate as a placeholder
+        if (!result.micro_aggs.empty()) {
+            result.C_agg = result.micro_aggs[0];
+        }
+    }
 
     // Step 6: Assess completeness
     int N_recv = static_cast<int>(readings.size());

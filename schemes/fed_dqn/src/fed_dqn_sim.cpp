@@ -569,6 +569,8 @@ FedDQNMetrics FedDQNSimulation::Run() {
     int completed_task_count = 0;       // Number of non-rejected tasks
     int federated_sync_count = 0;       // Number of federated averaging rounds
     double total_recovery_latency = 0;  // Simulated recovery cost across all episodes
+    double total_scheduling_time_ms = 0; // Wall-clock scheduling decision time
+    int scheduling_decisions = 0;        // Number of scheduling decisions made
 
     for (int episode = 0; episode < num_episodes_; episode++) {
         // Simulate fog node failures
@@ -606,8 +608,16 @@ FedDQNMetrics FedDQNSimulation::Run() {
             // Get state
             std::vector<double> state = GetState(node, task);
 
+            // Time the DQN scheduling decision
+            auto sched_start = std::chrono::high_resolution_clock::now();
+
             // Select VM action (epsilon-greedy)
             int vm_idx = SelectAction(node, state);
+
+            auto sched_end = std::chrono::high_resolution_clock::now();
+            total_scheduling_time_ms += std::chrono::duration<double, std::milli>(sched_end - sched_start).count();
+            scheduling_decisions++;
+
             VirtualMachine& vm = node.vms[vm_idx];
 
             // Check if VM has capacity
@@ -764,6 +774,30 @@ FedDQNMetrics FedDQNSimulation::Run() {
     metrics.recovery_latency_ms = (recovery_count > 0)
         ? total_recovery_latency / recovery_count  // Average per-recovery latency
         : 0;
+
+    // Scheduling latency: average wall-clock time per scheduling decision
+    metrics.scheduling_latency_ms = (scheduling_decisions > 0)
+        ? total_scheduling_time_ms / scheduling_decisions
+        : 0;
+
+    // Workload imbalance: I_W = sqrt(1/|F| * sum((W_i - W_bar)^2))
+    // W_i = tasks_assigned / total_tasks (normalized workload per node)
+    {
+        double w_bar = 0.0;
+        std::vector<double> workloads(num_fog_nodes_);
+        for (int f = 0; f < num_fog_nodes_; f++) {
+            workloads[f] = static_cast<double>(fog_nodes_[f].tasks_assigned) /
+                           std::max(1, total_tasks);
+            w_bar += workloads[f];
+        }
+        w_bar /= num_fog_nodes_;
+        double var_sum = 0.0;
+        for (int f = 0; f < num_fog_nodes_; f++) {
+            double diff = workloads[f] - w_bar;
+            var_sum += diff * diff;
+        }
+        metrics.workload_imbalance = std::sqrt(var_sum / num_fog_nodes_);
+    }
 
     return metrics;
 }

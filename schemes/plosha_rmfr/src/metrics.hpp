@@ -17,6 +17,9 @@ struct EpochMetrics {
     double system_availability = 0.0;
     double queue_utilization = 0.0;
     int recovery_frequency = 0;
+    double scheduling_latency_ms = 0.0;
+    double workload_imbalance = 0.0;
+    double processing_overhead_ms = 0.0;
 };
 
 // Averaged metrics written as one CSV row per sweep point
@@ -30,6 +33,9 @@ struct SweepPointResult {
     double avg_system_availability = 0.0;
     double avg_queue_utilization = 0.0;
     double avg_recovery_frequency = 0.0;
+    double avg_scheduling_latency = 0.0;
+    double avg_workload_imbalance = 0.0;
+    double avg_processing_overhead = 0.0;
 };
 
 class MetricsCollector {
@@ -53,6 +59,22 @@ public:
     static void writeResultsFile(const std::string& filepath,
                                   const std::string& variable_name,
                                   const std::vector<SweepPointResult>& results);
+
+    // Write ablation results (variant column format)
+    struct AblationRow {
+        std::string variant;
+        double num_sensors;
+        double aggregation_latency_ms;
+        double processing_overhead_ms;
+        double loss_exposure_fraction;
+    };
+    static void writeAblationResultsFile(const std::string& filepath,
+                                          const std::vector<AblationRow>& rows);
+
+    // Write scheduling results (2-metric format)
+    static void writeSchedulingResultsFile(const std::string& filepath,
+                                            const std::string& variable_name,
+                                            const std::vector<SweepPointResult>& results);
 
 private:
     std::vector<EpochMetrics> epoch_records_;

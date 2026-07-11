@@ -9,7 +9,7 @@ LDFLAGS = -lssl -lcrypto -lpthread
 SIM_SRCS = fed_dqn_sim.cpp
 
 # Targets
-TARGETS = exp1_sensor_scalability exp2_fog_scalability exp3_workload_intensity exp4_failure_rate
+TARGETS = exp1_sensor_scalability exp2_fog_scalability exp3_workload_intensity exp4_failure_rate exp9_scheduling_efficiency
 
 .PHONY: all clean
 
@@ -25,6 +25,9 @@ exp3_workload_intensity: exp3_main.cpp $(SIM_SRCS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 exp4_failure_rate: exp4_main.cpp $(SIM_SRCS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+exp9_scheduling_efficiency: exp9_main.cpp $(SIM_SRCS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 clean:

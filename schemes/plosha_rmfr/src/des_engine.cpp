@@ -104,6 +104,8 @@ EpochMetrics DESEngine::runEpoch(
   }
 
   // --- Phase II: EWMA Prediction ---
+  auto sched_start = std::chrono::high_resolution_clock::now();
+
   std::vector<FogState> current_states(num_fog);
   std::vector<PredictionVector> predictions(num_fog);
 
@@ -113,6 +115,10 @@ EpochMetrics DESEngine::runEpoch(
                                    feedback_states[f].thresholds.tau_r);
   }
 
+  auto sched_end = std::chrono::high_resolution_clock::now();
+  metrics.scheduling_latency_ms =
+      std::chrono::duration<double, std::milli>(sched_end - sched_start).count();
+
   // --- Phase III: PLOSHA Aggregation (per fog node) ---
   double total_agg_latency = 0.0;
   double total_completeness = 0.0;
@@ -121,6 +127,7 @@ EpochMetrics DESEngine::runEpoch(
   int recovery_count = 0;
   double total_recovery_latency = 0.0;
   double total_comm_overhead = 0.0;
+  double total_processing_overhead = 0.0;
 
   for (int f = 0; f < num_fog; ++f) {
     auto queued_readings = fog_nodes[f].drainQueue();
@@ -190,9 +197,11 @@ EpochMetrics DESEngine::runEpoch(
         crypto_, fog_aes_key, queued_readings, expected, predictions[f],
         beta_t_calibrated_, feedback_states[f].thresholds.tau_v,
         current_states[f].reliability,
-        config.forced_micro_slots);
+        config.forced_micro_slots,
+        config.hierarchical_aggregation);
 
     total_agg_latency += agg_result.aggregation_latency_ms;
+    total_processing_overhead += agg_result.processing_overhead_ms;
 
     // Update fog processing latency for L_i normalization (R6)
     fog_nodes[f].updateProcessingLatency(agg_result.aggregation_latency_ms);
@@ -283,6 +292,7 @@ EpochMetrics DESEngine::runEpoch(
   metrics.aggregation_completeness = total_completeness / active_fogs;
   metrics.loss_exposure_fraction /= active_fogs;
   metrics.communication_overhead_KB = total_comm_overhead;
+  metrics.processing_overhead_ms = total_processing_overhead / active_fogs;
   // System availability: non-failed nodes count as fully available.
   // Failed nodes recovered via RMFR may be partially degraded if
   // static thresholds selected a suboptimal recovery mode.
@@ -298,6 +308,20 @@ EpochMetrics DESEngine::runEpoch(
   metrics.system_availability = total_availability / num_fog;
   metrics.queue_utilization = total_queue_util / num_fog;
   metrics.recovery_frequency = recovery_count;
+
+  // Compute workload imbalance I_W = sqrt(1/|F| * sum((W_i - W_bar)^2))
+  {
+    double w_bar = 0.0;
+    for (int f = 0; f < num_fog; ++f)
+      w_bar += current_states[f].workload;
+    w_bar /= num_fog;
+    double var_sum = 0.0;
+    for (int f = 0; f < num_fog; ++f) {
+      double diff = current_states[f].workload - w_bar;
+      var_sum += diff * diff;
+    }
+    metrics.workload_imbalance = std::sqrt(var_sum / num_fog);
+  }
 
   // Update previous states for next epoch
   prev_states = current_states;
@@ -582,6 +606,12 @@ void DESEngine::runExperiment(const ExperimentConfig &config) {
   case 7:
     runExp7_AFLTOAblation(config);
     break;
+  case 8:
+    runExp8_AblationAggregation(config);
+    break;
+  case 9:
+    runExp9_SchedulingEfficiency(config);
+    break;
   default:
     std::cerr << "[DES] Unknown experiment: " << config.experiment_id << "\n";
   }
@@ -595,10 +625,10 @@ void DESEngine::runAll(const ExperimentConfig &base_config) {
   // R2: Calibrate β_t from real measurements
   beta_t_calibrated_ = crypto_.calibrateBetaT(100);
 
-  std::cout << "[DES] Running all 7 experiments...\n\n";
+  std::cout << "[DES] Running all 9 experiments...\n\n";
   auto total_start = std::chrono::high_resolution_clock::now();
 
-  for (int exp = 1; exp <= 7; ++exp) {
+  for (int exp = 1; exp <= 9; ++exp) {
     ExperimentConfig config = base_config;
     config.experiment_id = exp;
 
@@ -626,6 +656,12 @@ void DESEngine::runAll(const ExperimentConfig &base_config) {
     case 7:
       runExp7_AFLTOAblation(config);
       break;
+    case 8:
+      runExp8_AblationAggregation(config);
+      break;
+    case 9:
+      runExp9_SchedulingEfficiency(config);
+      break;
     }
 
     auto exp_end = std::chrono::high_resolution_clock::now();
@@ -639,6 +675,110 @@ void DESEngine::runAll(const ExperimentConfig &base_config) {
       std::chrono::duration<double>(total_end - total_start).count();
   std::cout << "\n[DES] All experiments completed in " << total_sec
             << " seconds\n";
+}
+
+
+
+// ---------------------------------------------------------------------------
+// Experiment 8: Ablation of PLOSHA Aggregation Architecture
+// ---------------------------------------------------------------------------
+void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
+  std::cout << "\n=== Experiment 8: Ablation of PLOSHA Aggregation Architecture ===\n";
+
+  // Variant definitions:
+  // 0 = flat_epoch:    forced_micro_slots=1, hierarchical=false
+  // 1 = fixed_slot:    forced_micro_slots=sqrt(N), hierarchical=false
+  // 2 = adaptive_slot: forced_micro_slots=0 (optimizer), hierarchical=false
+  // 3 = full_plosha:   forced_micro_slots=0 (optimizer), hierarchical=true
+  struct AblationVariant {
+    std::string name;
+    int forced_slots;   // -1 = use sqrt(N), 0 = optimizer, >0 = fixed
+    bool hierarchical;
+  };
+  std::vector<AblationVariant> variants = {
+    {"flat_epoch",    1,  false},
+    {"fixed_slot",    -1, false},  // -1 signals sqrt(N)
+    {"adaptive_slot", 0,  false},
+    {"full_plosha",   0,  true},
+  };
+
+  std::vector<double> sensor_values = {500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000};
+  std::string output_dir = config.output_dir + "/exp8_ablation_aggregation";
+  std::vector<MetricsCollector::AblationRow> all_rows;
+
+  for (const auto &variant : variants) {
+    std::cout << "  [Variant] " << variant.name << "\n";
+
+    for (double num_sensors : sensor_values) {
+      std::cout << "    [Sweep] num_sensors = " << num_sensors << "...\n";
+      metrics_.reset();
+
+      ExperimentConfig exp_config = config;
+      exp_config.num_sensors = static_cast<int>(num_sensors);
+      exp_config.num_fog_nodes = 10;
+      exp_config.failure_rate = 0.0;
+      exp_config.num_epochs = DEFAULT_NUM_EPOCHS;
+      exp_config.hierarchical_aggregation = variant.hierarchical;
+
+      // Set forced micro-slots
+      if (variant.forced_slots == -1) {
+        // Fixed-Slot: sqrt(N)
+        exp_config.forced_micro_slots = std::max(1, static_cast<int>(std::sqrt(num_sensors)));
+      } else {
+        exp_config.forced_micro_slots = variant.forced_slots;
+      }
+
+      // Initialize system
+      std::vector<Sensor> sensors;
+      std::vector<FogNode> fog_nodes;
+      std::vector<uint8_t> fog_aes_key;
+      initializeSystem(exp_config, sensors, fog_nodes, fog_aes_key);
+
+      dataset_.load(exp_config.dataset_path, exp_config.num_sensors, exp_config.num_fog_nodes);
+      auto epoch_data = dataset_.groupByEpoch(exp_config.num_sensors, exp_config.workload_multiplier);
+
+      std::vector<FogState> prev_states(exp_config.num_fog_nodes);
+      std::vector<FeedbackState> feedback_states(exp_config.num_fog_nodes);
+      std::mt19937 rng(42);
+
+      for (int e = 0; e < exp_config.num_epochs; ++e) {
+        auto epoch_metrics = runEpoch(exp_config, sensors, fog_nodes, fog_aes_key,
+                                       epoch_data, e, prev_states, feedback_states, rng);
+        metrics_.recordEpoch(epoch_metrics);
+      }
+
+      auto avg = metrics_.computeAverages(num_sensors);
+      MetricsCollector::AblationRow row;
+      row.variant = variant.name;
+      row.num_sensors = num_sensors;
+      row.aggregation_latency_ms = avg.avg_aggregation_latency;
+      row.processing_overhead_ms = avg.avg_processing_overhead;
+      row.loss_exposure_fraction = avg.avg_loss_exposure;
+      all_rows.push_back(row);
+    }
+  }
+
+  MetricsCollector::writeAblationResultsFile(output_dir + "/results.csv", all_rows);
+}
+
+// ---------------------------------------------------------------------------
+// Experiment 9: Scheduling Efficiency
+// ---------------------------------------------------------------------------
+void DESEngine::runExp9_SchedulingEfficiency(const ExperimentConfig &config) {
+  std::cout << "\n=== Experiment 9: Scheduling Efficiency ===\n";
+  SweepConfig sweep;
+  sweep.variable_name = "num_fog_nodes";
+  sweep.sweep_values = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50};
+  sweep.output_dir = config.output_dir + "/exp9_scheduling_efficiency";
+
+  ExperimentConfig exp_config = config;
+  exp_config.num_sensors = 2000;
+  exp_config.failure_rate = 0.0;
+  exp_config.num_epochs = DEFAULT_NUM_EPOCHS;
+
+  auto results = runSweep(sweep, exp_config);
+  MetricsCollector::writeSchedulingResultsFile(sweep.output_dir + "/results.csv",
+                                                sweep.variable_name, results);
 }
 
 } // namespace plosha

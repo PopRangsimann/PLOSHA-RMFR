@@ -43,6 +43,7 @@ private:
     void runExp4_FailureRate(const ExperimentConfig& config);
     void runExp5_LossExposure(const ExperimentConfig& config);
     void runExp6_RecoveryComm(const ExperimentConfig& config);
+    void runExp9_SchedulingEfficiency(const ExperimentConfig& config);
 
     struct SweepConfig {
         std::string variable_name;

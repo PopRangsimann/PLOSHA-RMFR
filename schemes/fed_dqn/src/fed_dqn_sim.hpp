@@ -106,6 +106,8 @@ struct FedDQNMetrics {
     double avg_queue_utilization;   // Average queue length / capacity
     int recovery_count;             // Number of fog node failures recovered
     double recovery_latency_ms;     // Simulated recovery latency (VM reset + reschedule)
+    double scheduling_latency_ms;   // Wall-clock time for DQN action selection
+    double workload_imbalance;      // I_W = sqrt(1/|F| * sum((W_i - W_bar)^2))
 };
 
 // ============================================================================

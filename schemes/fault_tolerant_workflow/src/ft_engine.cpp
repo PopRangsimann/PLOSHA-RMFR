@@ -1,5 +1,7 @@
 #include "ft_engine.hpp"
 #include <iostream>
+#include <fstream>
+#include <iomanip>
 #include <chrono>
 #include <cmath>
 #include <algorithm>
@@ -70,12 +72,16 @@ EpochMetrics FTEngine::runEpoch(const ExperimentConfig& config,
     }
 
     // Performance Fluctuation update
+    auto sched_start = std::chrono::high_resolution_clock::now();
     std::uniform_real_distribution<double> perf_dist(PERF_COEFF_MIN, PERF_COEFF_MAX);
     for (auto& fn : fog_nodes) {
         double new_perf = perf_dist(rng);
         double smoothed = PERF_EWMA_ALPHA * new_perf + (1.0 - PERF_EWMA_ALPHA) * fn.perfCoefficient();
         fn.updatePerfCoefficient(smoothed);
     }
+    auto sched_end = std::chrono::high_resolution_clock::now();
+    metrics.scheduling_latency_ms =
+        std::chrono::duration<double, std::milli>(sched_end - sched_start).count();
 
     double total_agg_latency = 0.0;
     double total_completeness = 0.0;
@@ -190,6 +196,23 @@ EpochMetrics FTEngine::runEpoch(const ExperimentConfig& config,
     metrics.queue_utilization = total_queue_util / num_fog;
     metrics.recovery_frequency = recovery_count;
 
+    // Compute workload imbalance
+    {
+        double w_bar = 0.0;
+        for (int f = 0; f < num_fog; ++f) {
+            auto state = fog_nodes[f].getState();
+            w_bar += state.queue_load;
+        }
+        w_bar /= num_fog;
+        double var_sum = 0.0;
+        for (int f = 0; f < num_fog; ++f) {
+            auto state = fog_nodes[f].getState();
+            double diff = state.queue_load - w_bar;
+            var_sum += diff * diff;
+        }
+        metrics.workload_imbalance = std::sqrt(var_sum / num_fog);
+    }
+
     return metrics;
 }
 
@@ -291,6 +314,36 @@ void FTEngine::runExp6_RecoveryComm(const ExperimentConfig& config) {
     MetricsCollector::writeResultsFile(sweep.output_dir + "/results.csv", sweep.variable_name, results);
 }
 
+void FTEngine::runExp9_SchedulingEfficiency(const ExperimentConfig& config) {
+    std::cout << "\n=== Experiment 9: Scheduling Efficiency ===\n";
+    SweepConfig sweep{"num_fog_nodes", {5, 10, 15, 20, 25, 30, 35, 40, 45, 50},
+                      config.output_dir + "/exp9_scheduling_efficiency"};
+    ExperimentConfig exp_config = config;
+    exp_config.num_sensors = 2000;
+    exp_config.failure_rate = 0.0;
+    auto results = runSweep(sweep, exp_config);
+
+    // Write scheduling-specific CSV
+    auto slash = sweep.output_dir.rfind('/');
+    if (slash != std::string::npos) {
+        std::string dir = sweep.output_dir;
+        std::string cmd = "mkdir -p " + dir;
+        (void)system(cmd.c_str());
+    }
+    std::ofstream file(sweep.output_dir + "/results.csv");
+    if (file.is_open()) {
+        file << "num_fog_nodes,scheduling_latency_ms,workload_imbalance\n";
+        for (const auto& r : results) {
+            file << std::fixed << std::setprecision(6)
+                 << r.variable_value << ","
+                 << r.avg_scheduling_latency << ","
+                 << r.avg_workload_imbalance << "\n";
+        }
+        file.close();
+        std::cout << "[FTWorkflow] Wrote " << results.size() << " scheduling rows\n";
+    }
+}
+
 void FTEngine::runExperiment(const ExperimentConfig& config) {
     std::cout << "[FTWorkflow-Engine] Generating cryptographic keys...\n";
     // Ref[37] uses AES-only (no Paillier homomorphic encryption)
@@ -304,6 +357,7 @@ void FTEngine::runExperiment(const ExperimentConfig& config) {
         case 4: runExp4_FailureRate(config); break;
         case 5: runExp5_LossExposure(config); break;
         case 6: runExp6_RecoveryComm(config); break;
+        case 9: runExp9_SchedulingEfficiency(config); break;
         default: std::cerr << "Unknown experiment ID\n";
     }
 }
@@ -315,7 +369,9 @@ void FTEngine::runAll(const ExperimentConfig& base_config) {
     beta_t_calibrated_ = crypto_.calibrateBetaT(100);
 
     std::cout << "[FTWorkflow-Engine] Running all experiments...\n";
-    for (int exp = 1; exp <= 6; ++exp) {
+    // Run experiments 1-6 and 9
+    int exp_ids[] = {1, 2, 3, 4, 5, 6, 9};
+    for (int exp : exp_ids) {
         ExperimentConfig config = base_config;
         config.experiment_id = exp;
         switch (exp) {
@@ -325,6 +381,7 @@ void FTEngine::runAll(const ExperimentConfig& base_config) {
             case 4: runExp4_FailureRate(config); break;
             case 5: runExp5_LossExposure(config); break;
             case 6: runExp6_RecoveryComm(config); break;
+            case 9: runExp9_SchedulingEfficiency(config); break;
         }
     }
 }

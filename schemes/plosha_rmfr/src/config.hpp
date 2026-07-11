@@ -99,7 +99,7 @@ constexpr int    ABLATION_EPOCHS        = 10;   // Standardized: all experiments
 // Experiment Configuration
 // ---------------------------------------------------------------------------
 struct ExperimentConfig {
-    int experiment_id       = 0;      // 1-7, or 0 for "all"
+    int experiment_id       = 0;      // 1-9, or 0 for "all"
     int num_sensors         = DEFAULT_NUM_SENSORS;
     int num_fog_nodes       = DEFAULT_NUM_FOG_NODES;
     int num_epochs          = DEFAULT_NUM_EPOCHS;
@@ -107,6 +107,7 @@ struct ExperimentConfig {
     int workload_multiplier = DEFAULT_WORKLOAD_MULT;
     int forced_micro_slots  = 0;      // 0 = use optimizer; >0 = force m*
     bool aflto_enabled      = true;
+    bool hierarchical_aggregation = true; // false = skip fog-level hierarchy
     std::string output_dir  = ".";
     std::string dataset_path = "../../dataset/plosha_dataset.csv";
 };

@@ -6,9 +6,9 @@
 using namespace ftworkflow;
 
 void printUsage(const char* prog) {
-    std::cout << "Usage: " << prog << " --experiment <1-6|all> [options]\n"
+    std::cout << "Usage: " << prog << " --experiment <1-6|9|all> [options]\n"
               << "\nOptions:\n"
-              << "  --experiment <N|all>   Experiment number (1-6) or 'all'\n"
+              << "  --experiment <N|all>   Experiment number (1-6, 9) or 'all'\n"
               << "  --sensors <N>          Number of sensors (default: 1000)\n"
               << "  --fog-nodes <N>        Number of fog nodes (default: 10)\n"
               << "  --epochs <N>           Number of epochs (default: 10)\n"

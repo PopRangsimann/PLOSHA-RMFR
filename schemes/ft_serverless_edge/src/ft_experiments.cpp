@@ -57,6 +57,7 @@ SimResult FTServerlessEdgeSim::run() {
         case 4: return runExp4_FailureRate();
         case 5: return runExp5_LossExposure();
         case 6: return runExp6_RecoveryComm();
+        case 9: return runExp9_SchedulingEfficiency();
         default: return {cfg_.variable_value, 0, 0, 0};
     }
 }
@@ -305,4 +306,56 @@ SimResult FTServerlessEdgeSim::runExp6_RecoveryComm() {
     // Average per request
     double avg_comm_kb = total_comm_kb / reqs.size();
     return {cfg_.variable_value, avg_comm_kb, 0, 0};
+}
+
+// ── Exp9: Scheduling Efficiency ──────────────────────────────────────────
+SimResult FTServerlessEdgeSim::runExp9_SchedulingEfficiency() {
+    int n_cl = (int)cfg_.variable_value;
+    int n_sensors = cfg_.num_sensors > 0 ? cfg_.num_sensors : 2000;
+    rng_.seed(cfg_.seed);
+    buildSECNetwork(n_cl);
+    initCrypto();
+
+    std::vector<DSPRequest> reqs;
+    for (int i = 0; i < n_sensors; i++) {
+        auto& row = dataset_[i % dataset_.size()];
+        reqs.push_back(createRequest(i, i % 100, i % n_cl,
+            row.bytes_transferred, row.packet_size, row.is_failure));
+    }
+    computeCloudletLoad(reqs, n_cl, cloudlet_load_);
+
+    // Measure scheduling/placement latency
+    auto sched_start = std::chrono::high_resolution_clock::now();
+
+    for (auto& req : reqs) {
+        algorithmFwk(req);
+    }
+
+    auto sched_end = std::chrono::high_resolution_clock::now();
+    double total_sched_ms = std::chrono::duration<double, std::milli>(sched_end - sched_start).count();
+    double avg_sched_ms = total_sched_ms / std::max(1, (int)reqs.size());
+
+    // Compute workload imbalance across cloudlets
+    // W_i = load_i / total_load (normalized)
+    int total_load = 0;
+    for (int c = 0; c < n_cl; c++) {
+        total_load += cloudlet_load_[c];
+    }
+    double w_bar = (total_load > 0)
+        ? static_cast<double>(total_load) / n_cl / total_load
+        : 0.0;
+    // Actually: W_i = load_i / total_load, W_bar = 1/n_cl
+    w_bar = 1.0 / n_cl;
+    double var_sum = 0.0;
+    for (int c = 0; c < n_cl; c++) {
+        double w_i = (total_load > 0)
+            ? static_cast<double>(cloudlet_load_[c]) / total_load
+            : 0.0;
+        double diff = w_i - w_bar;
+        var_sum += diff * diff;
+    }
+    double imbalance = std::sqrt(var_sum / n_cl);
+
+    // primary_metric = scheduling_latency_ms, secondary_1 = workload_imbalance
+    return {cfg_.variable_value, avg_sched_ms, imbalance, 0};
 }
