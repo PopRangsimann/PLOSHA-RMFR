@@ -14,15 +14,9 @@ plt.rcParams['legend.framealpha'] = 0.9
 # Scheme definitions (matching the directories)
 SCHEMES = {
     'plosha_rmfr': {
-        'label': 'PLOSHA-RMFR (ours)',
+        'label': 'PLOSHA-RMFR (Ours)',
         'color': '#1f77b4',  # Blue
         'marker': 'o'
-    },
-    'plosha_rmfr_tee': {
-        'label': 'PLOSHA-RMFR (TEE)',
-        'color': '#17becf',  # Teal
-        'marker': '*',
-        'markersize': 10
     },
     'fed_dqn': {
         'label': 'Ref[22]',
@@ -137,8 +131,8 @@ def plot_experiment(exp_name, x_col, y_col, x_label, y_label, output_filename,
     # Legend ordering: we want other references first, then ours at the bottom
     handles, labels = ax.get_legend_handles_labels()
     if handles:
-        # Sort so Ref[X] comes first, then PLOSHA-RMFR (ours), then PLOSHA-RMFR (TEE)
-        sorted_pairs = sorted(zip(handles, labels), key=lambda pair: (2 if pair[1] == 'PLOSHA-RMFR (TEE)' else 1 if pair[1] == 'PLOSHA-RMFR (ours)' else 0, pair[1]))
+        # Sort so Ref[X] comes first, then PLOSHA-RMFR (Ours), then PLOSHA-RMFR (TEE)
+        sorted_pairs = sorted(zip(handles, labels), key=lambda pair: (2 if pair[1] == 'PLOSHA-RMFR (TEE)' else 1 if pair[1] == 'PLOSHA-RMFR (Ours)' else 0, pair[1]))
         handles_sorted, labels_sorted = zip(*sorted_pairs)
         ax.legend(handles_sorted, labels_sorted, loc=legend_loc, frameon=True)
 
@@ -270,7 +264,7 @@ def plot_exp7_aflto_ablation():
     ax.set_xticks(x)
     ax.set_xticklabels(metrics)
     ax.set_ylim(0, 1.15)
-    ax.legend(loc='upper right', frameon=True)
+    ax.legend(loc='upper left', frameon=True)
     setup_axes(ax)
     fig.tight_layout()
 
