@@ -13,7 +13,7 @@ int main() {
     const std::string output_path = "../exp3_workload_intensity/results.csv";
     const int NUM_FOG_NODES = 10;
     const int NUM_VMS_PER_NODE = 4;
-    const int NUM_EPISODES = 5;
+    const int NUM_EPISODES = 10;
 
     // Workload intensity: multiply effective tasks
     // Base = 1000 sensors, multiplied by intensity factor

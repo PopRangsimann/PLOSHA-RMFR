@@ -13,7 +13,7 @@ int main() {
     const std::string output_path = "../exp1_sensor_scalability/results.csv";
     const int NUM_FOG_NODES = 10;
     const int NUM_VMS_PER_NODE = 4;
-    const int NUM_EPISODES = 5;
+    const int NUM_EPISODES = 10;
 
     const int sensor_counts[] = {500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000};
     const int num_points = sizeof(sensor_counts) / sizeof(sensor_counts[0]);

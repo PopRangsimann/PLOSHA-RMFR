@@ -94,52 +94,76 @@ echo "✔ FedDQN completed."
 echo ""
 
 # ---------------------------------------------------------
-# 5. FT-Serverless Edge (Ref[38])
+# 5. FT-Serverless Edge (Ref[38]) — 10 seeds per point
 # ---------------------------------------------------------
 echo "[5/5] Running FT-Serverless Edge (Ref[38])..."
 cd "$ROOT_DIR/schemes/ft_serverless_edge/src"
 make clean && make
 
+NUM_SEEDS=10
+BASE_SEED=12345
+
+# Helper: run an experiment point NUM_SEEDS times and output the averaged CSV line
+run_avg() {
+  local exp=$1 var=$2; shift 2
+  local sum1=0 sum2=0 sum3=0
+  for s in $(seq $BASE_SEED $((BASE_SEED + NUM_SEEDS - 1))); do
+    local line
+    line=$(./ft_serverless_sim --experiment $exp --variable $var --seed $s "$@" --dataset "$DATASET_PATH")
+    local m1 m2 m3
+    m1=$(echo "$line" | awk -F',' '{print $2}')
+    m2=$(echo "$line" | awk -F',' '{print $3}')
+    m3=$(echo "$line" | awk -F',' '{print $4}')
+    sum1=$(echo "$sum1 + ${m1:-0}" | bc -l)
+    sum2=$(echo "$sum2 + ${m2:-0}" | bc -l)
+    sum3=$(echo "$sum3 + ${m3:-0}" | bc -l)
+  done
+  printf "%s,%.6f,%.6f,%.6f\n" "$var" \
+    "$(echo "$sum1 / $NUM_SEEDS" | bc -l)" \
+    "$(echo "$sum2 / $NUM_SEEDS" | bc -l)" \
+    "$(echo "$sum3 / $NUM_SEEDS" | bc -l)"
+}
+
 echo "  -> Running Exp 1 (Sensor Scalability)..."
 mkdir -p ../exp1_sensor_scalability
 echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp1_sensor_scalability/results.csv
 for v in 500 1000 1500 2000 2500 3000 3500 4000 4500 5000; do
-  ./ft_serverless_sim --experiment 1 --variable $v --sensors $v --dataset "$DATASET_PATH" >> ../exp1_sensor_scalability/results.csv
+  run_avg 1 $v --sensors $v >> ../exp1_sensor_scalability/results.csv
 done
 
 echo "  -> Running Exp 2 (Fog Scalability)..."
 mkdir -p ../exp2_fog_scalability
 echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp2_fog_scalability/results.csv
 for v in 5 10 15 20 25 30 35 40 45 50; do
-  ./ft_serverless_sim --experiment 2 --variable $v --cloudlets $v --dataset "$DATASET_PATH" >> ../exp2_fog_scalability/results.csv
+  run_avg 2 $v --cloudlets $v >> ../exp2_fog_scalability/results.csv
 done
 
 echo "  -> Running Exp 3 (Workload Intensity)..."
 mkdir -p ../exp3_workload_intensity
 echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp3_workload_intensity/results.csv
 for v in 1 2 3 4 5 6 7 8 9 10; do
-  ./ft_serverless_sim --experiment 3 --variable $v --dataset "$DATASET_PATH" >> ../exp3_workload_intensity/results.csv
+  run_avg 3 $v >> ../exp3_workload_intensity/results.csv
 done
 
 echo "  -> Running Exp 4 (Failure Rate)..."
 mkdir -p ../exp4_failure_rate
 echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp4_failure_rate/results.csv
 for v in 0.02 0.04 0.06 0.08 0.10 0.12 0.14 0.16 0.18 0.20; do
-  ./ft_serverless_sim --experiment 4 --variable $v --dataset "$DATASET_PATH" >> ../exp4_failure_rate/results.csv
+  run_avg 4 $v >> ../exp4_failure_rate/results.csv
 done
 
 echo "  -> Running Exp 5 (Loss Exposure)..."
 mkdir -p ../exp5_loss_exposure
 echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp5_loss_exposure/results.csv
 for v in 1 2 3 4 5 6 7 8 9 10 12 14 16 18 20; do
-  ./ft_serverless_sim --experiment 5 --variable $v --dataset "$DATASET_PATH" >> ../exp5_loss_exposure/results.csv
+  run_avg 5 $v >> ../exp5_loss_exposure/results.csv
 done
 
 echo "  -> Running Exp 6 (Recovery Communication)..."
 mkdir -p ../exp6_recovery_comm
 echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp6_recovery_comm/results.csv
 for v in 1 2 3 4 5 6 7 8 9 10; do
-  ./ft_serverless_sim --experiment 6 --variable $v --dataset "$DATASET_PATH" >> ../exp6_recovery_comm/results.csv
+  run_avg 6 $v >> ../exp6_recovery_comm/results.csv
 done
 echo "✔ FT-Serverless Edge completed."
 echo ""

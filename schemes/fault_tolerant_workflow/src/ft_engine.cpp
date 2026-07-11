@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <algorithm>
+#include <cstring>
 
 namespace ftworkflow {
 
@@ -101,15 +102,22 @@ EpochMetrics FTEngine::runEpoch(const ExperimentConfig& config,
 
         auto start = std::chrono::high_resolution_clock::now();
 
-        std::vector<PaillierCiphertext> pcts;
-        pcts.reserve(queued_readings.size());
-        
-        // Single flat aggregation (unlike PLOSHA micro-slots)
+        // AES-only aggregation: decrypt, sum in plaintext, re-encrypt
+        // Ref[37] is a scheduling paper — it does NOT use homomorphic encryption
         if (!node_failed) {
+            uint64_t plaintext_sum = 0;
             for (const auto& reading : queued_readings) {
-                pcts.push_back(crypto_.teeTransform(fog_aes_key, reading.aes_ct));
+                // Decrypt AES ciphertext to get plaintext value
+                auto pt = crypto_.aesDecrypt(fog_aes_key, reading.aes_ct);
+                uint32_t val = 0;
+                if (pt.size() >= sizeof(uint32_t))
+                    memcpy(&val, pt.data(), sizeof(uint32_t));
+                plaintext_sum += val;
             }
-            PaillierCiphertext agg = crypto_.aggregateMultiple(pcts);
+            // Re-encrypt the aggregate
+            uint8_t sum_bytes[sizeof(uint64_t)];
+            memcpy(sum_bytes, &plaintext_sum, sizeof(uint64_t));
+            auto agg_ct = crypto_.aesEncrypt(fog_aes_key, sum_bytes, sizeof(uint64_t));
             
             auto end = std::chrono::high_resolution_clock::now();
             double latency_ms = std::chrono::duration<double, std::milli>(end - start).count();
@@ -129,29 +137,36 @@ EpochMetrics FTEngine::runEpoch(const ExperimentConfig& config,
             
             if (use_resubmission) {
                 // Resubmission Recovery
-                // Task must be completely re-executed from scratch on a new node.
                 comm_bytes += queued_readings.size() * 128 * REPLICATION_COMM_RATIO;
-                rec_latency += T_task_est; // Re-execute full task
+                rec_latency += T_task_est;
                 
-                // Do the crypto to simulate full re-execution time
+                // Re-execute with AES-only aggregation
+                uint64_t plaintext_sum = 0;
                 for (const auto& reading : queued_readings) {
-                    pcts.push_back(crypto_.teeTransform(fog_aes_key, reading.aes_ct));
+                    auto pt = crypto_.aesDecrypt(fog_aes_key, reading.aes_ct);
+                    uint32_t val = 0;
+                    if (pt.size() >= sizeof(uint32_t))
+                        memcpy(&val, pt.data(), sizeof(uint32_t));
+                    plaintext_sum += val;
                 }
-                if (!pcts.empty()) {
-                    PaillierCiphertext agg = crypto_.aggregateMultiple(pcts);
-                }
+                uint8_t sum_bytes[sizeof(uint64_t)];
+                memcpy(sum_bytes, &plaintext_sum, sizeof(uint64_t));
+                auto agg_ct = crypto_.aesEncrypt(fog_aes_key, sum_bytes, sizeof(uint64_t));
             } else {
                 // Replication Recovery
-                // Replica takes over immediately. 
-                comm_bytes += queued_readings.size() * 128 * REPLICATION_COMM_RATIO; // Estimate 128B per reading
-                // Replica executes full task
+                comm_bytes += queued_readings.size() * 128 * REPLICATION_COMM_RATIO;
                 rec_latency += T_task_est;
+                uint64_t plaintext_sum = 0;
                 for (const auto& reading : queued_readings) {
-                    pcts.push_back(crypto_.teeTransform(fog_aes_key, reading.aes_ct));
+                    auto pt = crypto_.aesDecrypt(fog_aes_key, reading.aes_ct);
+                    uint32_t val = 0;
+                    if (pt.size() >= sizeof(uint32_t))
+                        memcpy(&val, pt.data(), sizeof(uint32_t));
+                    plaintext_sum += val;
                 }
-                if (!pcts.empty()) {
-                    PaillierCiphertext agg = crypto_.aggregateMultiple(pcts);
-                }
+                uint8_t sum_bytes[sizeof(uint64_t)];
+                memcpy(sum_bytes, &plaintext_sum, sizeof(uint64_t));
+                auto agg_ct = crypto_.aesEncrypt(fog_aes_key, sum_bytes, sizeof(uint64_t));
             }
             
             total_recovery_latency += rec_latency;
@@ -278,7 +293,7 @@ void FTEngine::runExp6_RecoveryComm(const ExperimentConfig& config) {
 
 void FTEngine::runExperiment(const ExperimentConfig& config) {
     std::cout << "[FTWorkflow-Engine] Generating cryptographic keys...\n";
-    crypto_.generatePaillierKeys();
+    // Ref[37] uses AES-only (no Paillier homomorphic encryption)
     crypto_.generateECDSAKeys();
     beta_t_calibrated_ = crypto_.calibrateBetaT(100);
 
@@ -295,7 +310,7 @@ void FTEngine::runExperiment(const ExperimentConfig& config) {
 
 void FTEngine::runAll(const ExperimentConfig& base_config) {
     std::cout << "[FTWorkflow-Engine] Generating cryptographic keys...\n";
-    crypto_.generatePaillierKeys();
+    // Ref[37] uses AES-only (no Paillier homomorphic encryption)
     crypto_.generateECDSAKeys();
     beta_t_calibrated_ = crypto_.calibrateBetaT(100);
 

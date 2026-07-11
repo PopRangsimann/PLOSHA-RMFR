@@ -13,7 +13,7 @@ int main() {
     const std::string output_path = "../exp2_fog_scalability/results.csv";
     const int NUM_SENSORS = 2000;
     const int NUM_VMS_PER_NODE = 4;
-    const int NUM_EPISODES = 5;
+    const int NUM_EPISODES = 10;
 
     const int fog_node_counts[] = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50};
     const int num_points = sizeof(fog_node_counts) / sizeof(fog_node_counts[0]);

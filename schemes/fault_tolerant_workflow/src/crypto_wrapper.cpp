@@ -166,7 +166,7 @@ PaillierCiphertext CryptoWrapper::teeTransform(const std::vector<uint8_t>& aes_k
 }
 
 double CryptoWrapper::calibrateBetaT(int num_trials) {
-    std::cout << "[FTWorkflow-Crypto] Calibrating β_t with " << num_trials << " trials...\n";
+    std::cout << "[FTWorkflow-Crypto] Calibrating β_t with " << num_trials << " AES trials...\n";
     auto test_key = generateAESKey();
     uint32_t test_value = 12345;
     uint8_t plaintext_bytes[sizeof(uint32_t)];
@@ -176,10 +176,10 @@ double CryptoWrapper::calibrateBetaT(int num_trials) {
     trial_times.reserve(num_trials);
     for (int i = 0; i < num_trials; ++i) {
         auto start = std::chrono::high_resolution_clock::now();
+        // AES-only: encrypt, decrypt, re-encrypt (simulates aggregation pipeline)
         AESCiphertext aes_ct = aesEncrypt(test_key, plaintext_bytes, sizeof(uint32_t));
-        PaillierCiphertext pct = teeTransform(test_key, aes_ct);
-        PaillierCiphertext agg;
-        paillier_.Aggregate(agg.value, pct.value, pct.value);
+        auto pt = aesDecrypt(test_key, aes_ct);
+        AESCiphertext aes_ct2 = aesEncrypt(test_key, pt.data(), pt.size());
         auto end = std::chrono::high_resolution_clock::now();
         trial_times.push_back(std::chrono::duration<double>(end - start).count());
     }

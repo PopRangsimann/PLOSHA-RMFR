@@ -18,6 +18,12 @@ SCHEMES = {
         'color': '#1f77b4',  # Blue
         'marker': 'o'
     },
+    'plosha_rmfr_tee': {
+        'label': 'PLOSHA-RMFR (TEE)',
+        'color': '#17becf',  # Teal
+        'marker': '*',
+        'markersize': 10
+    },
     'fed_dqn': {
         'label': 'Ref[22]',
         'color': '#ff7f0e',  # Orange
@@ -55,7 +61,22 @@ def get_data(exp_dir_name):
     """Load data for a given experiment directory name across all schemes."""
     data = {}
     for scheme_id in SCHEMES.keys():
-        csv_path = BASE_DIR / scheme_id / exp_dir_name / 'results.csv'
+        # Special handling for PLOSHA native vs TEE
+        if scheme_id == 'plosha_rmfr':
+            # Use the _native backup if it exists (fair comparison with baselines)
+            native_path = BASE_DIR / 'plosha_rmfr' / f'{exp_dir_name}_native' / 'results.csv'
+            sgx_path = BASE_DIR / 'plosha_rmfr' / exp_dir_name / 'results.csv'
+            csv_path = native_path if native_path.exists() else sgx_path
+        elif scheme_id == 'plosha_rmfr_tee':
+            # TEE line reads from the main directory (contains SGX results)
+            csv_path = BASE_DIR / 'plosha_rmfr' / exp_dir_name / 'results.csv'
+            # Only include if native backup also exists (proves SGX actually ran)
+            native_path = BASE_DIR / 'plosha_rmfr' / f'{exp_dir_name}_native' / 'results.csv'
+            if not native_path.exists():
+                continue
+        else:
+            csv_path = BASE_DIR / scheme_id / exp_dir_name / 'results.csv'
+
         if csv_path.exists():
             try:
                 df = pd.read_csv(csv_path)
@@ -96,13 +117,15 @@ def plot_experiment(exp_name, x_col, y_col, x_label, y_label, output_filename,
             if x_lim is not None:
                 plot_df = df[(df[x_col] >= x_lim[0]) & (df[x_col] <= x_lim[1])]
             scheme_info = SCHEMES[scheme_id]
+            ms = scheme_info.get('markersize', 8)
             ax.plot(plot_df[x_col], plot_df[y_col],
                     label=scheme_info['label'],
                     color=scheme_info['color'],
                     marker=scheme_info['marker'],
-                    linewidth=2.5,
-                    markersize=8,
-                    zorder=5 if scheme_id == 'plosha_rmfr' else 3)
+                    linewidth=2.5 if 'tee' not in scheme_id else 2.0,
+                    linestyle='-' if 'tee' not in scheme_id else '--',
+                    markersize=ms,
+                    zorder=5 if scheme_id in ('plosha_rmfr', 'plosha_rmfr_tee') else 3)
 
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
@@ -114,8 +137,8 @@ def plot_experiment(exp_name, x_col, y_col, x_label, y_label, output_filename,
     # Legend ordering: we want other references first, then ours at the bottom
     handles, labels = ax.get_legend_handles_labels()
     if handles:
-        # Sort so Ref[X] comes before PLOSHA-RMFR (ours)
-        sorted_pairs = sorted(zip(handles, labels), key=lambda pair: (pair[1] == 'PLOSHA-RMFR (ours)', pair[1]))
+        # Sort so Ref[X] comes first, then PLOSHA-RMFR (ours), then PLOSHA-RMFR (TEE)
+        sorted_pairs = sorted(zip(handles, labels), key=lambda pair: (2 if pair[1] == 'PLOSHA-RMFR (TEE)' else 1 if pair[1] == 'PLOSHA-RMFR (ours)' else 0, pair[1]))
         handles_sorted, labels_sorted = zip(*sorted_pairs)
         ax.legend(handles_sorted, labels_sorted, loc=legend_loc, frameon=True)
 
