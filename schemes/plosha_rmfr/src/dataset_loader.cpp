@@ -91,36 +91,25 @@ void DatasetLoader::load(const std::string& csv_path,
         dataset_sensor_count = std::max(dataset_sensor_count, r.sensor_id + 1);
     }
 
-    for (size_t i = 0; i < raw_rows.size(); ++i) {
-        const auto& r = raw_rows[i];
-        // Map the original sensor_id to a virtual sensor_id within [0, num_sensors)
-        int virtual_sensor = r.sensor_id % num_sensors;
-
-        SensorReading sr;
-        sr.sensor_id       = virtual_sensor;
-        sr.fog_node_id     = sensor_to_fog_[virtual_sensor];
-        sr.temperature     = r.temperature;
-        sr.pressure        = r.pressure;
-        sr.vibration       = r.vibration;
-        sr.is_failure      = r.is_failure;
-        sr.quantized_value = quantize(r.temperature, t_min, t_max);
-        readings_.push_back(sr);
-    }
-
-    // If we need more sensors than the dataset has unique IDs,
-    // duplicate readings with shifted sensor IDs
-    if (num_sensors > dataset_sensor_count) {
-        size_t original_count = readings_.size();
-        int copies_needed = (num_sensors + dataset_sensor_count - 1) / dataset_sensor_count;
-        for (int c = 1; c < copies_needed; ++c) {
-            for (size_t i = 0; i < original_count; ++i) {
-                SensorReading sr = readings_[i];
-                int new_sid = (sr.sensor_id + c * dataset_sensor_count);
-                if (new_sid >= num_sensors) break;
-                sr.sensor_id   = new_sid;
-                sr.fog_node_id = sensor_to_fog_[new_sid];
-                readings_.push_back(sr);
-            }
+    // Generate readings perfectly interleaved by time step.
+    // The dataset has `dataset_sensor_count` readings per time step.
+    size_t num_time_steps = raw_rows.size() / dataset_sensor_count;
+    readings_.reserve(num_time_steps * num_sensors);
+    
+    for (size_t t = 0; t < num_time_steps; ++t) {
+        for (int sid = 0; sid < num_sensors; ++sid) {
+            int original_sid = sid % dataset_sensor_count;
+            const auto& r = raw_rows[t * dataset_sensor_count + original_sid];
+            
+            SensorReading sr;
+            sr.sensor_id       = sid;
+            sr.fog_node_id     = sensor_to_fog_[sid];
+            sr.temperature     = r.temperature;
+            sr.pressure        = r.pressure;
+            sr.vibration       = r.vibration;
+            sr.is_failure      = r.is_failure;
+            sr.quantized_value = quantize(r.temperature, t_min, t_max);
+            readings_.push_back(sr);
         }
     }
 

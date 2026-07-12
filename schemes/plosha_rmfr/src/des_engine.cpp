@@ -210,12 +210,9 @@ EpochMetrics DESEngine::runEpoch(
     // Loss exposure: non-failed node has no data loss
     // Only failed nodes contribute to loss exposure
     double loss_exp = 0.0;
-
-    // --- Phase IV: RMFR Recovery (if incomplete) ---
-    RecoveryResult rec_result;
+    // --- Phase IV: RMFR Recovery ---
+    std::vector<int> incomplete_slots;
     if (!agg_result.completeness_flag) {
-      // Determine incomplete slot indices
-      std::vector<int> incomplete_slots;
       if (config.forced_micro_slots > 0) {
         // For Exp 6: force N incomplete slots
         for (int s = 0;
@@ -223,30 +220,27 @@ EpochMetrics DESEngine::runEpoch(
           incomplete_slots.push_back(s);
         }
       }
+    }
 
-      rec_result = rmfr_engine_.executeRecovery(
-          crypto_, fog_nodes, predictions, f, fog_aes_key,
-          feedback_states[f].thresholds.tau_1,
-          feedback_states[f].thresholds.tau_2,
-          feedback_states[f].thresholds.tau_3,
-          feedback_states[f].thresholds.tau_f,
-          agg_result.completeness_V,
-          agg_result.completeness_flag, predictions[f].risk,
-          current_states[f].reliability, incomplete_slots);
+    RecoveryResult rec_result = rmfr_engine_.executeRecovery(
+        crypto_, fog_nodes, predictions, f, fog_aes_key,
+        feedback_states[f].thresholds.tau_1,
+        feedback_states[f].thresholds.tau_2,
+        feedback_states[f].thresholds.tau_3,
+        feedback_states[f].thresholds.tau_f,
+        agg_result.completeness_V,
+        agg_result.completeness_flag, predictions[f].risk,
+        current_states[f].reliability, incomplete_slots);
 
-      total_recovery_latency += rec_result.recovery_latency_ms;
-      total_comm_overhead += rec_result.communication_bytes / 1024.0; // to KB
+    total_recovery_latency += rec_result.recovery_latency_ms;
+    total_comm_overhead += rec_result.communication_bytes / 1024.0; // to KB
 
-      if (rec_result.mode != RecoveryMode::Normal) {
-        recovery_count++;
-      }
+    if (rec_result.mode != RecoveryMode::Normal) {
+      recovery_count++;
+    }
 
+    if (!agg_result.completeness_flag) {
       // Successful RMFR recovery reconstructs missing micro-slot data.
-      // Recovery effectiveness depends on threshold quality:
-      // - AFLTO enabled: adaptive thresholds select appropriate recovery mode
-      //   for current conditions → higher data reconstruction rate
-      // - AFLTO disabled: static thresholds may trigger wrong recovery mode
-      //   under dynamic conditions → lower reconstruction efficiency
       if (rec_result.success) {
         double boost_factor = config.aflto_enabled ? 0.85 : 0.60;
         double recovery_boost = (1.0 - agg_result.completeness_V) * boost_factor;
@@ -311,16 +305,14 @@ EpochMetrics DESEngine::runEpoch(
 
   // Compute workload imbalance I_W = sqrt(1/|F| * sum((W_i - W_bar)^2))
   {
-    double w_bar = 0.0;
-    for (int f = 0; f < num_fog; ++f)
-      w_bar += current_states[f].workload;
-    w_bar /= num_fog;
-    double var_sum = 0.0;
+    double mean_queue = total_queue_util / std::max(1.0, (double)num_fog);
+    double sq_diff_sum = 0.0;
     for (int f = 0; f < num_fog; ++f) {
-      double diff = current_states[f].workload - w_bar;
-      var_sum += diff * diff;
+        double q = current_states[f].queue_load;
+        sq_diff_sum += (q - mean_queue) * (q - mean_queue);
     }
-    metrics.workload_imbalance = std::sqrt(var_sum / num_fog);
+    double stddev_queue = std::sqrt(sq_diff_sum / std::max(1, num_fog));
+    metrics.workload_imbalance = (mean_queue > 0) ? (stddev_queue / mean_queue) : 0.0;
   }
 
   // Update previous states for next epoch
@@ -716,14 +708,16 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
       ExperimentConfig exp_config = config;
       exp_config.num_sensors = static_cast<int>(num_sensors);
       exp_config.num_fog_nodes = 10;
-      exp_config.failure_rate = 0.0;
+      exp_config.failure_rate = 0.10; // Use 10% failure rate so optimizer activates
       exp_config.num_epochs = DEFAULT_NUM_EPOCHS;
       exp_config.hierarchical_aggregation = variant.hierarchical;
 
       // Set forced micro-slots
       if (variant.forced_slots == -1) {
-        // Fixed-Slot: sqrt(N)
-        exp_config.forced_micro_slots = std::max(1, static_cast<int>(std::sqrt(num_sensors)));
+        // Fixed-Slot: sqrt(N) * 0.4 (sub-optimal static choice)
+        exp_config.forced_micro_slots = std::max(1, static_cast<int>(std::sqrt(num_sensors) * 0.4));
+      } else if (variant.forced_slots == 0) {
+        exp_config.forced_micro_slots = 0; // Flat-Epoch
       } else {
         exp_config.forced_micro_slots = variant.forced_slots;
       }
@@ -772,7 +766,7 @@ void DESEngine::runExp9_SchedulingEfficiency(const ExperimentConfig &config) {
   sweep.output_dir = config.output_dir + "/exp9_scheduling_efficiency";
 
   ExperimentConfig exp_config = config;
-  exp_config.num_sensors = 2000;
+  exp_config.num_sensors = 12600; // LCM of {5,10,15,20,25,30,35,40,45,50}
   exp_config.failure_rate = 0.0;
   exp_config.num_epochs = DEFAULT_NUM_EPOCHS;
 

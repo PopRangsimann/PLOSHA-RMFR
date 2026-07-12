@@ -12,7 +12,7 @@
 int main() {
     const std::string dataset_path = "../../../dataset/plosha_dataset.csv";
     const std::string output_path = "../exp9_scheduling_efficiency/results.csv";
-    const int NUM_SENSORS = 2000;
+    const int NUM_SENSORS = 12600;
     const int NUM_VMS_PER_NODE = 4;
     const int NUM_EPISODES = 10;
 

@@ -111,7 +111,7 @@ Each experiment varies a single independent variable and measures specific metri
 
 ## Rules
 
-- **Input**: All schemes read IIoT task data from `dataset/plosha_dataset.csv`.
+- **Input**: All schemes read IIoT task data from `dataset/plosha_dataset.csv (Kaggle Smart Manufacturing Dataset with Jitter)`.
 - **Output**: Each experiment folder must produce a `results.csv` in a standardized format.
 - **Plotting**: The central `plots/generate_plots.py` script collects `results.csv` files from all `schemes/*/exp<N>_*/` folders and generates comparison graphs into `plots/output/`.
 
@@ -156,10 +156,10 @@ This repository is designed for parallel teamwork. Each collaborator is responsi
 
 ### Do NOT cross-contaminate schemes
 - **Do NOT copy implementation logic** from one scheme folder into another. Each scheme must be an independent, faithful implementation of the approach described in its reference paper.
-- **Do NOT share runtime state or intermediate data** between scheme simulations. Each scheme reads only from `dataset/plosha_dataset.csv` and writes only to its own `results.csv`.
+- **Do NOT share runtime state or intermediate data** between scheme simulations. Each scheme reads only from `dataset/plosha_dataset.csv (Kaggle Smart Manufacturing Dataset with Jitter)` and writes only to its own `results.csv`.
 
 ### Do NOT modify shared resources without approval
-- **Do NOT modify `dataset/plosha_dataset.csv`** — this is the single source of truth for all schemes.
+- **Do NOT modify `dataset/plosha_dataset.csv (Kaggle Smart Manufacturing Dataset with Jitter)`** — this is the single source of truth for all schemes.
 - **Do NOT modify `plots/generate_plots.py`** without explicit approval — changes affect every scheme's visualization.
 - **Do NOT modify `README.md`** rules or experiment definitions without team consensus.
 
@@ -185,7 +185,7 @@ chmod +x run_benchmark.sh
 If you prefer to run the benchmark manually step-by-step:
 
 #### 1. Execute Each Scheme
-For each scheme, navigate to its `src/` directory, compile the code, and run all experiments. Ensure the `--dataset` path correctly points to the shared `dataset/plosha_dataset.csv`.
+For each scheme, navigate to its `src/` directory, compile the code, and run all experiments. Ensure the `--dataset` path correctly points to the shared `dataset/plosha_dataset.csv (Kaggle Smart Manufacturing Dataset with Jitter)`.
 
 **Example for PLOSHA-RMFR (runs inside real Intel SGX enclave):**
 ```bash
@@ -197,14 +197,14 @@ gramine-manifest --no-check -Dlog_level=error \
   plosha_rmfr.manifest.template plosha_rmfr.manifest
 # Note: If you don't have an SGX key yet, run 'gramine-sgx-gen-private-key' first
 gramine-sgx-sign --manifest plosha_rmfr.manifest --output plosha_rmfr.manifest.sgx
-gramine-sgx plosha_rmfr --experiment all --epochs 10 --dataset /dataset/plosha_dataset.csv --output /output
+gramine-sgx plosha_rmfr --experiment all --epochs 10 --dataset /dataset/plosha_dataset.csv (Kaggle Smart Manufacturing Dataset with Jitter) --output /output
 ```
 
 **Example for other baseline schemes (e.g., Ref[37]):**
 ```bash
 cd schemes/fault_tolerant_workflow/src
 make clean && make
-./ftworkflow --experiment all --dataset ../../../dataset/plosha_dataset.csv
+./ftworkflow --experiment all --dataset ../../../dataset/plosha_dataset.csv (Kaggle Smart Manufacturing Dataset with Jitter)
 ```
 
 *(Repeat this process for `robust_iiot`, `fed_dqn`, and `ft_serverless_edge` using their respective executable names).*

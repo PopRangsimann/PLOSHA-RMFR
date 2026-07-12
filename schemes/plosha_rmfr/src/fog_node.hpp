@@ -33,6 +33,7 @@ public:
 
     // Assign a sensor to this fog node
     void assignSensor(int sensor_id);
+    void removeSensor(int sensor_id);
 
     // Submit an encrypted reading to the queue (thread-safe)
     void submitReading(const QueuedReading& reading);
@@ -78,6 +79,7 @@ private:
     // State
     double processing_latency_ms_ = 0.0;
     double reliability_ = 1.0;
+    int total_queue_weight_ = 0;
     bool is_failed_ = false;
 };
 

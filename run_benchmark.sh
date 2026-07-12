@@ -24,7 +24,7 @@ echo ""
 # ---------------------------------------------------------
 echo "[1b/5] Running PLOSHA-RMFR (Ours) in Intel SGX..."
 # Copy native results to backup before SGX overwrites them
-for d in exp1_sensor_scalability exp2_fog_scalability exp3_workload_intensity exp4_failure_rate exp5_loss_exposure exp6_recovery_comm exp7_aflto; do
+for d in exp1_sensor_scalability exp2_fog_scalability exp3_workload_intensity exp4_failure_rate exp5_loss_exposure exp6_recovery_comm exp7_aflto exp8_ablation_aggregation exp9_scheduling_efficiency; do
   if [ -d "$ROOT_DIR/schemes/plosha_rmfr/$d" ]; then
     mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/${d}_native"
     cp -r "$ROOT_DIR/schemes/plosha_rmfr/$d/"* "$ROOT_DIR/schemes/plosha_rmfr/${d}_native/" 2>/dev/null || true
@@ -172,7 +172,7 @@ echo "  -> Running Exp 9 (Scheduling Efficiency)..."
 mkdir -p ../exp9_scheduling_efficiency
 echo "num_fog_nodes,scheduling_latency_ms,workload_imbalance" > ../exp9_scheduling_efficiency/results.csv
 for v in 5 10 15 20 25 30 35 40 45 50; do
-  line=$(./ft_serverless_sim --experiment 9 --variable $v --cloudlets $v --seed $BASE_SEED --dataset "$DATASET_PATH")
+  line=$(./ft_serverless_sim --experiment 9 --variable $v --cloudlets $v --sensors 12600 --seed $BASE_SEED --dataset "$DATASET_PATH")
   # primary_metric = scheduling_latency_ms, secondary_1 = workload_imbalance
   sched_lat=$(echo "$line" | awk -F',' '{print $2}')
   imbalance=$(echo "$line" | awk -F',' '{print $3}')

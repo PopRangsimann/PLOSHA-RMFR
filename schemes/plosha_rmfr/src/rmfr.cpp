@@ -116,6 +116,15 @@ RecoveryResult RMFREngine::executeRecovery(
     dsp.sensor_list = failed_node.assignedSensors();
     // Payload: state (4 doubles) + sensor list (4 bytes each)
     dsp.payload_bytes = sizeof(FogState) + dsp.sensor_list.size() * sizeof(int);
+    
+    // Actually transfer ~20% of sensors from overloaded to target
+    size_t transfer_count = std::max(1UL, dsp.sensor_list.size() / 5);
+    for (size_t i = 0; i < transfer_count; ++i) {
+        int sid = dsp.sensor_list[i];
+        target_node.assignSensor(sid);
+        failed_node.removeSensor(sid);
+    }
+
     result.communication_bytes = dsp.payload_bytes;
     result.success = true;
     break;

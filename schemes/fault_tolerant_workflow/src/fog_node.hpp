@@ -65,6 +65,7 @@ private:
     int fog_id_;
     int queue_capacity_;
     double max_latency_ms_;
+    int total_queue_weight_ = 0;
     std::vector<int> assigned_sensors_;
     mutable std::unique_ptr<std::mutex> queue_mutex_;
     std::queue<QueuedReading> reading_queue_;

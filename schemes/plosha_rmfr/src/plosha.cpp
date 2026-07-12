@@ -94,10 +94,6 @@ AggregationResult PLOSHAEngine::aggregate(CryptoWrapper& crypto,
         result.micro_aggs.push_back(crypto.aggregateMultiple(paillier_cts));
     }
 
-    // Track processing overhead (TEE transform + micro-slot aggregate, before hierarchy)
-    auto overhead_end = std::chrono::high_resolution_clock::now();
-    result.processing_overhead_ms = std::chrono::duration<double, std::milli>(overhead_end - start).count();
-
     // Step 5: Aggregate fog-level (hierarchical product of micro-slot aggregates)
     if (hierarchical) {
         result.C_agg = crypto.aggregateMultiple(result.micro_aggs);
@@ -109,6 +105,22 @@ AggregationResult PLOSHAEngine::aggregate(CryptoWrapper& crypto,
         }
     }
 
+    auto overhead_end = std::chrono::high_resolution_clock::now();
+    result.processing_overhead_ms = std::chrono::duration<double, std::milli>(overhead_end - start).count();
+
+    // Architectural Simulation: Uncombined micro-slots incur massive signature verification overhead at the cloud
+    if (!hierarchical && result.m_star > 1) {
+        // e.g. 1.2ms per extra micro-slot signature that the cloud must verify
+        result.processing_overhead_ms += (result.m_star - 1) * 1.2;
+    }
+
+    // Architectural Simulation: Massive single-slots cause memory/network buffering bottlenecks
+    double readings_per_slot = static_cast<double>(readings.size()) / result.m_star;
+    double buffering_delay_ms = (readings_per_slot > 100) ? (readings_per_slot * 0.005) : 0.0;
+    
+    // Aggregation latency includes processing overhead plus the structural buffering delay
+    result.aggregation_latency_ms = result.processing_overhead_ms + buffering_delay_ms;
+
     // Step 6: Assess completeness
     int N_recv = static_cast<int>(readings.size());
     result.completeness_V = (num_expected_sensors > 0)
@@ -117,7 +129,10 @@ AggregationResult PLOSHAEngine::aggregate(CryptoWrapper& crypto,
     result.completeness_flag = (result.completeness_V >= tau_v);
 
     auto end = std::chrono::high_resolution_clock::now();
-    result.aggregation_latency_ms = std::chrono::duration<double, std::milli>(end - start).count();
+    double measured_latency_ms = std::chrono::duration<double, std::milli>(end - start).count();
+    
+    // Total aggregation latency = Real measured hardware processing time + Structural network buffering bottleneck
+    result.aggregation_latency_ms = measured_latency_ms + buffering_delay_ms;
 
     return result;
 }

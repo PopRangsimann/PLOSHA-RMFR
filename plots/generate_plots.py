@@ -325,6 +325,7 @@ def plot_exp8_ablation_aggregation():
             ax.plot(sub['num_sensors'], sub[y_col],
                     label=info['label'], color=info['color'],
                     marker=info['marker'], linewidth=2.5, markersize=8, zorder=3)
+        ax.set_yscale('log')
         ax.set_xlabel('Number of Sensors')
         ax.set_ylabel(y_label)
         setup_axes(ax)
@@ -396,6 +397,9 @@ def plot_exp9_scheduling_efficiency():
         ax.set_xlabel('Number of Fog Nodes')
         ax.set_ylabel(y_label)
         setup_axes(ax)
+
+    # Scheduling latency spans ~4 orders of magnitude — use log scale
+    axes[0].set_yscale('log')
 
     # Shared legend — Refs first, then Ours
     handles, labels = axes[0].get_legend_handles_labels()

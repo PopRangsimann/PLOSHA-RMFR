@@ -13,9 +13,17 @@ void FogNode::assignSensor(int sensor_id) {
     assigned_sensors_.push_back(sensor_id);
 }
 
+void FogNode::removeSensor(int sensor_id) {
+    auto it = std::find(assigned_sensors_.begin(), assigned_sensors_.end(), sensor_id);
+    if (it != assigned_sensors_.end()) {
+        assigned_sensors_.erase(it);
+    }
+}
+
 void FogNode::submitReading(const QueuedReading& reading) {
     std::lock_guard<std::mutex> lock(*queue_mutex_);
     reading_queue_.push(reading);
+    total_queue_weight_ += reading.plaintext_value;
 }
 
 std::vector<QueuedReading> FogNode::drainQueue() {
@@ -26,17 +34,25 @@ std::vector<QueuedReading> FogNode::drainQueue() {
         readings.push_back(std::move(reading_queue_.front()));
         reading_queue_.pop();
     }
+    total_queue_weight_ = 0;
     return readings;
 }
 
 FogState FogNode::getState() const {
     FogState state;
 
-    int q_size = currentQueueSize();
+    int current_weight = 0;
+    {
+        std::lock_guard<std::mutex> lock(*queue_mutex_);
+        current_weight = total_queue_weight_;
+    }
+    
+    // Max capacity approx: 65535 (max quantized val) * queue_capacity_
+    double max_weight_capacity = 65535.0 * queue_capacity_;
 
-    // R5 FIX: W_i = queue_size / queue_capacity, normalized to [0,1]
-    state.workload = (queue_capacity_ > 0)
-        ? std::min(1.0, static_cast<double>(q_size) / queue_capacity_)
+    // R5 FIX: W_i = queue_weight / max_weight_capacity, normalized to [0,1]
+    state.workload = (max_weight_capacity > 0)
+        ? std::min(1.0, static_cast<double>(current_weight) / max_weight_capacity)
         : 0.0;
 
     // Q_i: same normalization as W_i for queue occupancy

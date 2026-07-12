@@ -16,6 +16,7 @@ void FogNode::assignSensor(int sensor_id) {
 void FogNode::submitReading(const QueuedReading& reading) {
     std::lock_guard<std::mutex> lock(*queue_mutex_);
     reading_queue_.push(reading);
+    total_queue_weight_ += reading.plaintext_value;
 }
 
 std::vector<QueuedReading> FogNode::drainQueue() {
@@ -26,14 +27,14 @@ std::vector<QueuedReading> FogNode::drainQueue() {
         readings.push_back(std::move(reading_queue_.front()));
         reading_queue_.pop();
     }
+    total_queue_weight_ = 0;
     return readings;
 }
 
 NodeState FogNode::getState() const {
     NodeState state;
-    int q_size = currentQueueSize();
     state.workload = (queue_capacity_ > 0)
-        ? std::min(1.0, static_cast<double>(q_size) / queue_capacity_)
+        ? std::min(1.0, static_cast<double>(total_queue_weight_) / (queue_capacity_ * 35000.0))
         : 0.0;
     state.queue_load = state.workload;
     state.latency = (max_latency_ms_ > 0)

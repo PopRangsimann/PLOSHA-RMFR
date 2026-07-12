@@ -319,7 +319,7 @@ void FTEngine::runExp9_SchedulingEfficiency(const ExperimentConfig& config) {
     SweepConfig sweep{"num_fog_nodes", {5, 10, 15, 20, 25, 30, 35, 40, 45, 50},
                       config.output_dir + "/exp9_scheduling_efficiency"};
     ExperimentConfig exp_config = config;
-    exp_config.num_sensors = 2000;
+    exp_config.num_sensors = 12600;
     exp_config.failure_rate = 0.0;
     auto results = runSweep(sweep, exp_config);
 
