@@ -29,9 +29,15 @@ void DESEngine::initializeSystem(const ExperimentConfig &config,
     fog_nodes.emplace_back(f, queue_cap);
   }
 
-  // Create sensors and assign to fog nodes (round-robin)
+  // Create sensors and assign to fog nodes (hotspot)
   for (int s = 0; s < config.num_sensors; ++s) {
-    int fog_id = s % config.num_fog_nodes;
+    int fog_id;
+    // Introduce a hotspot for realistic evaluation: 25% of sensors go to Fog Node 0
+    if (s < config.num_sensors * 0.25) {
+        fog_id = 0;
+    } else {
+        fog_id = 1 + (s % std::max(1, config.num_fog_nodes - 1));
+    }
     sensors.emplace_back(s, fog_id, fog_aes_key);
     fog_nodes[fog_id].assignSensor(s);
   }
@@ -303,17 +309,19 @@ EpochMetrics DESEngine::runEpoch(
   metrics.queue_utilization = total_queue_util / num_fog;
   metrics.recovery_frequency = recovery_count;
 
-  // Compute workload imbalance I_W = sqrt(1/|F| * sum((W_i - W_bar)^2))
-  {
-    double mean_queue = total_queue_util / std::max(1.0, (double)num_fog);
-    double sq_diff_sum = 0.0;
-    for (int f = 0; f < num_fog; ++f) {
-        double q = current_states[f].queue_load;
-        sq_diff_sum += (q - mean_queue) * (q - mean_queue);
-    }
-    double stddev_queue = std::sqrt(sq_diff_sum / std::max(1, num_fog));
-    metrics.workload_imbalance = (mean_queue > 0) ? (stddev_queue / mean_queue) : 0.0;
+  // Compute workload imbalance (I_W) using node_load / total_load
+  double total_w = 0.0;
+  for (int f = 0; f < config.num_fog_nodes; ++f) {
+    total_w += static_cast<double>(fog_nodes[f].currentQueueSize());
   }
+  double w_bar = 1.0 / config.num_fog_nodes;
+  double var_sum = 0.0;
+  for (int f = 0; f < config.num_fog_nodes; ++f) {
+    double w_i = (total_w > 0) ? (static_cast<double>(fog_nodes[f].currentQueueSize()) / total_w) : 0.0;
+    double diff = w_i - w_bar;
+    var_sum += diff * diff;
+  }
+  metrics.workload_imbalance = std::sqrt(var_sum / config.num_fog_nodes);
 
   // Update previous states for next epoch
   prev_states = current_states;
@@ -679,19 +687,19 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
 
   // Variant definitions:
   // 0 = flat_epoch:    forced_micro_slots=1, hierarchical=false
-  // 1 = fixed_slot:    forced_micro_slots=sqrt(N), hierarchical=false
+  // 1 = fixed_slot:    forced_micro_slots=FIXED_SLOT_M (constant), hierarchical=false
   // 2 = adaptive_slot: forced_micro_slots=0 (optimizer), hierarchical=false
   // 3 = full_plosha:   forced_micro_slots=0 (optimizer), hierarchical=true
   struct AblationVariant {
     std::string name;
-    int forced_slots;   // -1 = use sqrt(N), 0 = optimizer, >0 = fixed
+    int forced_slots;   // 0 = optimizer, >0 = fixed count
     bool hierarchical;
   };
   std::vector<AblationVariant> variants = {
-    {"flat_epoch",    1,  false},
-    {"fixed_slot",    -1, false},  // -1 signals sqrt(N)
-    {"adaptive_slot", 0,  false},
-    {"full_plosha",   0,  true},
+    {"flat_epoch",    1,              false},
+    {"fixed_slot",    FIXED_SLOT_M,   false},  // True constant: M_MAX/2
+    {"adaptive_slot", 0,              false},
+    {"full_plosha",   0,              true},
   };
 
   std::vector<double> sensor_values = {500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000};
@@ -713,11 +721,8 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
       exp_config.hierarchical_aggregation = variant.hierarchical;
 
       // Set forced micro-slots
-      if (variant.forced_slots == -1) {
-        // Fixed-Slot: sqrt(N) * 0.4 (sub-optimal static choice)
-        exp_config.forced_micro_slots = std::max(1, static_cast<int>(std::sqrt(num_sensors) * 0.4));
-      } else if (variant.forced_slots == 0) {
-        exp_config.forced_micro_slots = 0; // Flat-Epoch
+      if (variant.forced_slots == 0) {
+        exp_config.forced_micro_slots = 0; // Adaptive optimizer
       } else {
         exp_config.forced_micro_slots = variant.forced_slots;
       }
@@ -735,11 +740,22 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
       std::vector<FeedbackState> feedback_states(exp_config.num_fog_nodes);
       std::mt19937 rng(42);
 
+      auto sweep_start = std::chrono::high_resolution_clock::now();
       for (int e = 0; e < exp_config.num_epochs; ++e) {
+        auto epoch_start = std::chrono::high_resolution_clock::now();
         auto epoch_metrics = runEpoch(exp_config, sensors, fog_nodes, fog_aes_key,
                                        epoch_data, e, prev_states, feedback_states, rng);
         metrics_.recordEpoch(epoch_metrics);
+        auto epoch_end = std::chrono::high_resolution_clock::now();
+        double epoch_wall_ms = std::chrono::duration<double, std::milli>(epoch_end - epoch_start).count();
+        std::cout << "      [Epoch " << e << "] wall=" << epoch_wall_ms
+                  << "ms  agg_lat=" << epoch_metrics.aggregation_latency_ms
+                  << "ms  overhead=" << epoch_metrics.processing_overhead_ms << "ms\n";
       }
+      auto sweep_end = std::chrono::high_resolution_clock::now();
+      double sweep_wall_ms = std::chrono::duration<double, std::milli>(sweep_end - sweep_start).count();
+      std::cout << "    [TOTAL] " << exp_config.num_epochs << " epochs in "
+                << sweep_wall_ms << "ms (avg " << sweep_wall_ms / exp_config.num_epochs << "ms/epoch)\n";
 
       auto avg = metrics_.computeAverages(num_sensors);
       MetricsCollector::AblationRow row;

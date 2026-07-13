@@ -24,7 +24,13 @@ void FTEngine::initializeSystem(const ExperimentConfig& config,
         fog_nodes.emplace_back(f, queue_cap);
     }
     for (int s = 0; s < config.num_sensors; ++s) {
-        int fog_id = s % config.num_fog_nodes;
+        int fog_id;
+        // Introduce a hotspot for realistic evaluation: 25% of sensors go to Fog Node 0
+        if (s < config.num_sensors * 0.25) {
+            fog_id = 0;
+        } else {
+            fog_id = 1 + (s % std::max(1, config.num_fog_nodes - 1));
+        }
         sensors.emplace_back(s, fog_id, fog_aes_key);
         fog_nodes[fog_id].assignSensor(s);
     }
@@ -92,13 +98,13 @@ EpochMetrics FTEngine::runEpoch(const ExperimentConfig& config,
     double total_comm_overhead = 0.0;
     double total_loss_exposure = 0.0;
 
+    std::vector<int> pre_drain_counts(num_fog, 0);
     for (int f = 0; f < num_fog; ++f) {
         bool node_failed = fog_nodes[f].isFailed();
-        auto queued_readings = fog_nodes[f].drainQueue();
-        int expected = static_cast<int>(fog_nodes[f].assignedSensors().size()) * config.workload_multiplier;
-
-        auto state = fog_nodes[f].getState();
+        pre_drain_counts[f] = fog_nodes[f].currentQueueSize();
+        auto state = fog_nodes[f].getState();  // Capture state BEFORE drain (for other metrics)
         total_queue_util += state.queue_load;
+        auto queued_readings = fog_nodes[f].drainQueue();
 
         if (queued_readings.empty()) continue;
 
@@ -128,7 +134,6 @@ EpochMetrics FTEngine::runEpoch(const ExperimentConfig& config,
             auto end = std::chrono::high_resolution_clock::now();
             double latency_ms = std::chrono::duration<double, std::milli>(end - start).count();
             
-            // Adjust for performance coefficient
             latency_ms /= state.perf_coeff;
 
             total_agg_latency += latency_ms;
@@ -196,18 +201,17 @@ EpochMetrics FTEngine::runEpoch(const ExperimentConfig& config,
     metrics.queue_utilization = total_queue_util / num_fog;
     metrics.recovery_frequency = recovery_count;
 
-    // Compute workload imbalance
+    // Compute workload imbalance using total_load (standardized across all baselines)
     {
-        double w_bar = 0.0;
+        double total_w = 0.0;
         for (int f = 0; f < num_fog; ++f) {
-            auto state = fog_nodes[f].getState();
-            w_bar += state.queue_load;
+            total_w += static_cast<double>(pre_drain_counts[f]);
         }
-        w_bar /= num_fog;
+        double w_bar = 1.0 / num_fog;
         double var_sum = 0.0;
         for (int f = 0; f < num_fog; ++f) {
-            auto state = fog_nodes[f].getState();
-            double diff = state.queue_load - w_bar;
+            double w_i = (total_w > 0) ? (static_cast<double>(pre_drain_counts[f]) / total_w) : 0.0;
+            double diff = w_i - w_bar;
             var_sum += diff * diff;
         }
         metrics.workload_imbalance = std::sqrt(var_sum / num_fog);

@@ -46,7 +46,7 @@ static void computeCloudletLoad(const std::vector<DSPRequest> &reqs,
   for (const auto &req : reqs) {
     int cl = req.origin_fog;
     if (cl >= 0 && cl < num_cloudlets)
-      load_out[cl]++;
+      load_out[cl] += static_cast<int>(req.data_rate * 1000);  // Use actual data rate as workload
   }
 }
 

@@ -625,8 +625,13 @@ FedDQNMetrics FedDQNSimulation::Run() {
       task.rejected = false;
       task.sla_violated = false;
 
-      // Select fog node (round-robin, skipping failed)
-      int node_idx = task.id % num_fog_nodes_;
+      // Select fog node (hotspot assignment: 25% to Node 0, rest evenly)
+      int node_idx;
+      if (task.id < tasks_.size() * 0.25) {
+          node_idx = 0;
+      } else {
+          node_idx = 1 + (task.id % std::max(1, num_fog_nodes_ - 1));
+      }
       int attempts = 0;
       while (failed_nodes[node_idx] && attempts < num_fog_nodes_) {
         node_idx = (node_idx + 1) % num_fog_nodes_;
@@ -829,19 +834,19 @@ FedDQNMetrics FedDQNSimulation::Run() {
           : 0;
 
   // Workload imbalance: I_W = sqrt(1/|F| * sum((W_i - W_bar)^2))
-  // W_i = tasks_assigned / total_tasks (normalized workload per node)
+  // W_i = load_i / total_tasks (normalized [0,1])
   {
     double w_bar = 0.0;
-    std::vector<double> workloads(num_fog_nodes_);
+    double total_tasks = tasks_.size();
     for (int f = 0; f < num_fog_nodes_; f++) {
-      workloads[f] = static_cast<double>(fog_nodes_[f].tasks_assigned) /
-                     std::max(1, total_tasks);
-      w_bar += workloads[f];
+      double w_i = (total_tasks > 0) ? (fog_nodes_[f].tasks_assigned / total_tasks) : 0.0;
+      w_bar += w_i;
     }
     w_bar /= num_fog_nodes_;
     double var_sum = 0.0;
     for (int f = 0; f < num_fog_nodes_; f++) {
-      double diff = workloads[f] - w_bar;
+      double w_i = (total_tasks > 0) ? (fog_nodes_[f].tasks_assigned / total_tasks) : 0.0;
+      double diff = w_i - w_bar;
       var_sum += diff * diff;
     }
     metrics.workload_imbalance = std::sqrt(var_sum / num_fog_nodes_);

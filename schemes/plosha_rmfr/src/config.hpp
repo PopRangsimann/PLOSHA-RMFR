@@ -38,6 +38,8 @@ constexpr double ETA_2             = 0.5;  // Failure exposure weight
 // ---------------------------------------------------------------------------
 constexpr int    M_MAX             = 20;   // Maximum micro-slots per epoch
 constexpr double BETA_T            = 0.001; // Per-micro-slot overhead (seconds)
+constexpr double ECDSA_VERIFY_MS   = 0.055; // Measured: 18080 verify/s on i5-10600 (openssl speed ecdsap256)
+constexpr int    FIXED_SLOT_M      = 10;    // Static micro-slot count for Fixed-Slot ablation (M_MAX/2)
 
 // Optimization weights (λ₁ + λ₂ + λ₃ = 1)
 constexpr double LAMBDA_1          = 1.0 / 3.0;  // Aggregation efficiency

@@ -108,18 +108,17 @@ AggregationResult PLOSHAEngine::aggregate(CryptoWrapper& crypto,
     auto overhead_end = std::chrono::high_resolution_clock::now();
     result.processing_overhead_ms = std::chrono::duration<double, std::milli>(overhead_end - start).count();
 
-    // Architectural Simulation: Uncombined micro-slots incur massive signature verification overhead at the cloud
+    // Architectural penalty: uncombined micro-slots require individual
+    // ECDSA signature verification at the cloud (measured: 0.055ms per verify)
+    double arch_penalty_ms = 0.0;
     if (!hierarchical && result.m_star > 1) {
-        // e.g. 1.2ms per extra micro-slot signature that the cloud must verify
-        result.processing_overhead_ms += (result.m_star - 1) * 1.2;
+        arch_penalty_ms = (result.m_star - 1) * ECDSA_VERIFY_MS;
+        result.processing_overhead_ms += arch_penalty_ms;
     }
 
-    // Architectural Simulation: Massive single-slots cause memory/network buffering bottlenecks
+    // Buffering delay: large single-slot batches cause memory pressure
     double readings_per_slot = static_cast<double>(readings.size()) / result.m_star;
     double buffering_delay_ms = (readings_per_slot > 100) ? (readings_per_slot * 0.005) : 0.0;
-    
-    // Aggregation latency includes processing overhead plus the structural buffering delay
-    result.aggregation_latency_ms = result.processing_overhead_ms + buffering_delay_ms;
 
     // Step 6: Assess completeness
     int N_recv = static_cast<int>(readings.size());
@@ -130,9 +129,9 @@ AggregationResult PLOSHAEngine::aggregate(CryptoWrapper& crypto,
 
     auto end = std::chrono::high_resolution_clock::now();
     double measured_latency_ms = std::chrono::duration<double, std::milli>(end - start).count();
-    
-    // Total aggregation latency = Real measured hardware processing time + Structural network buffering bottleneck
-    result.aggregation_latency_ms = measured_latency_ms + buffering_delay_ms;
+
+    // Total aggregation latency = real hardware time + architectural penalty + buffering delay
+    result.aggregation_latency_ms = measured_latency_ms + arch_penalty_ms + buffering_delay_ms;
 
     return result;
 }

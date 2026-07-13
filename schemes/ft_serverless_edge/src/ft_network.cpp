@@ -179,7 +179,12 @@ DSPRequest FTServerlessEdgeSim::createRequest(int req_id, int sensor_id,
     DSPRequest r;
     r.id = req_id;
     r.sensor_id = sensor_id;
-    r.origin_fog = fog_id % num_cloudlets_;
+    // Hotspot assignment: ~25% of sensors go to Node 0, the rest evenly to others
+    if (sensor_id % 4 == 0) {
+        r.origin_fog = 0;
+    } else {
+        r.origin_fog = 1 + (sensor_id % std::max(1, num_cloudlets_ - 1));
+    }
     // Scale bytes_transferred to data rate in [0.01, 100] MB/s
     r.data_rate = DATA_RATE_MIN_MBS + (data_rate / 35000.0) * (DATA_RATE_MAX_MBS - DATA_RATE_MIN_MBS);
     r.data_rate = std::clamp(r.data_rate, DATA_RATE_MIN_MBS, DATA_RATE_MAX_MBS);

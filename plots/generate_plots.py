@@ -291,6 +291,7 @@ def plot_exp8_ablation_aggregation():
 
     Compares Flat-Epoch, Fixed-Slot, Adaptive-Slot, and Full PLOSHA
     across aggregation latency, processing overhead, and loss exposure.
+    Subplot 1 uses a grouped bar chart for clarity; subplots 2-3 use line plots.
     """
     csv_path = BASE_DIR / 'plosha_rmfr' / 'exp8_ablation_aggregation' / 'results.csv'
     if not csv_path.exists():
@@ -303,7 +304,7 @@ def plot_exp8_ablation_aggregation():
         print(f"Error reading {csv_path}: {e}")
         return
 
-    # Ablation variant definitions
+    # Ablation variant definitions (ordered so Full PLOSHA is last / visually prominent)
     VARIANTS = {
         'flat_epoch':    {'label': 'Flat-Epoch',    'color': '#d62728', 'marker': 'X'},
         'fixed_slot':    {'label': 'Fixed-Slot',    'color': '#ff7f0e', 'marker': 's'},
@@ -311,21 +312,37 @@ def plot_exp8_ablation_aggregation():
         'full_plosha':   {'label': 'Full PLOSHA',   'color': '#1f77b4', 'marker': 'o'},
     }
 
-    subplots_cfg = [
-        ('aggregation_latency_ms',  'Aggregation Latency (ms)'),
-        ('processing_overhead_ms',  'Processing Overhead (ms)'),
-        ('loss_exposure_fraction',  'Loss Exposure Fraction'),
-    ]
+    import numpy as np
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 5), dpi=300)
 
-    for ax, (y_col, y_label) in zip(axes, subplots_cfg):
-        for variant_id, info in VARIANTS.items():
+    bar_sensors = [1000, 2000, 3000, 4000, 5000]
+    variant_ids = list(VARIANTS.keys())
+    n_variants = len(variant_ids)
+    bar_width = 0.18
+    x_positions = np.arange(len(bar_sensors))
+
+    subplots_cfg = [
+        (axes[0], 'aggregation_latency_ms',  'Aggregation Latency (ms)',  False),
+        (axes[1], 'processing_overhead_ms',   'Processing Overhead (ms)',  False),
+        (axes[2], 'loss_exposure_fraction',   'Loss Exposure Fraction',    True),
+    ]
+
+    for ax, y_col, y_label, use_log in subplots_cfg:
+        for i, variant_id in enumerate(variant_ids):
+            info = VARIANTS[variant_id]
             sub = df[df['variant'] == variant_id]
-            ax.plot(sub['num_sensors'], sub[y_col],
-                    label=info['label'], color=info['color'],
-                    marker=info['marker'], linewidth=2.5, markersize=8, zorder=3)
-        ax.set_yscale('log')
+            vals = []
+            for s in bar_sensors:
+                row = sub[sub['num_sensors'] == s]
+                vals.append(row.iloc[0][y_col] if not row.empty else 0)
+            offset = (i - (n_variants - 1) / 2) * bar_width
+            ax.bar(x_positions + offset, vals, bar_width,
+                   label=info['label'], color=info['color'], zorder=3)
+        if use_log:
+            ax.set_yscale('log')
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels([str(s) for s in bar_sensors])
         ax.set_xlabel('Number of Sensors')
         ax.set_ylabel(y_label)
         setup_axes(ax)
