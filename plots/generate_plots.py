@@ -154,56 +154,34 @@ def main():
     
     print("Generating plots...")
 
-    # Experiment 1: Sensor Scalability
-    plot_experiment('exp1_sensor_scalability',
-                    x_col='num_sensors', y_col='aggregation_latency_ms',
-                    x_label='Number of Sensors', y_label='Aggregation Latency (ms)',
-                    y_scale='log',
-                    output_filename='graph1_sensor_scalability_latency.png')
+    # Graph 1: Ablation of PLOSHA Aggregation Architecture
+    plot_exp8_ablation_aggregation()
 
-    # Experiment 2: Fog Scalability
-    plot_experiment('exp2_fog_scalability',
-                    x_col='num_fog_nodes', y_col='aggregation_latency_ms',
-                    x_label='Number of Fog Nodes', y_label='Aggregation Latency (ms)',
-                    y_scale='log',
-                    output_filename='graph2_fog_scalability_latency.png')
+    # Graph 2: Scheduling Efficiency
+    plot_exp9_scheduling_efficiency()
 
-    # Experiment 3: Workload Intensity
-    plot_experiment('exp3_workload_intensity',
-                    x_col='workload_multiplier', y_col='aggregation_latency_ms',
-                    x_label='Workload Intensity (Multiplier)', y_label='Aggregation Latency (ms)',
-                    y_scale='log',
-                    x_lim=(0.5, 10.5),
-                    output_filename='graph3_workload_intensity_latency.png')
-
-    # Experiment 4: Failure Rate (Fig. 5 in paper — recovery latency only)
+    # Graph 3: Failure Rate
     plot_experiment('exp4_failure_rate',
                     x_col='failure_rate', y_col='recovery_latency_ms',
                     x_label='Failure Rate', y_label='Recovery Latency (ms)',
-                    output_filename='graph4_failure_rate.png')
+                    output_filename='graph3_failure_rate.png')
 
-    # Experiment 5: Loss Exposure
+    # Graph 4: Loss Exposure
     plot_experiment('exp5_loss_exposure',
                     x_col='micro_slots', y_col='loss_exposure_fraction',
                     x_label='Number of Micro-slots', y_label='Loss Exposure Fraction',
-                    output_filename='graph5_loss_exposure.png',
+                    output_filename='graph4_loss_exposure.png',
                     legend_loc='upper right',
                     exclude_schemes=['ft_serverless_edge'])
 
-    # Experiment 6: Recovery Communication
+    # Graph 5: Recovery Communication
     plot_experiment('exp6_recovery_comm',
                     x_col='incomplete_micro_slots', y_col='communication_overhead_KB',
                     x_label='Incomplete Micro-slots', y_label='Communication Overhead (KB)',
-                    output_filename='graph6_recovery_comm.png')
+                    output_filename='graph5_recovery_comm.png')
 
-    # Experiment 7: AFLTO Ablation (PLOSHA only — grouped bar chart)
+    # Graph 6: AFLTO Ablation
     plot_exp7_aflto_ablation()
-
-    # Experiment 8: Ablation of PLOSHA Aggregation Architecture (Fig. 2 in new.md)
-    plot_exp8_ablation_aggregation()
-
-    # Experiment 9: Scheduling Efficiency (Fig. 3 in new.md)
-    plot_exp9_scheduling_efficiency()
 
 
 def plot_exp7_aflto_ablation():
@@ -280,7 +258,7 @@ def plot_exp7_aflto_ablation():
     setup_axes(ax)
     fig.tight_layout()
 
-    out_path = OUTPUT_DIR / 'graph7_aflto_ablation.png'
+    out_path = OUTPUT_DIR / 'graph6_aflto_ablation.png'
     fig.savefig(out_path, bbox_inches='tight')
     print(f"Generated {out_path}")
     plt.close(fig)
@@ -314,7 +292,7 @@ def plot_exp8_ablation_aggregation():
 
     import numpy as np
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5), dpi=300)
+    fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
 
     bar_sensors = [1000, 2000, 3000, 4000, 5000]
     variant_ids = list(VARIANTS.keys())
@@ -322,38 +300,28 @@ def plot_exp8_ablation_aggregation():
     bar_width = 0.18
     x_positions = np.arange(len(bar_sensors))
 
-    subplots_cfg = [
-        (axes[0], 'aggregation_latency_ms',  'Aggregation Latency (ms)',  False),
-        (axes[1], 'processing_overhead_ms',   'Processing Overhead (ms)',  False),
-        (axes[2], 'loss_exposure_fraction',   'Loss Exposure Fraction',    True),
-    ]
+    y_col = 'aggregation_latency_ms'
+    y_label = 'Aggregation Latency (ms)'
 
-    for ax, y_col, y_label, use_log in subplots_cfg:
-        for i, variant_id in enumerate(variant_ids):
-            info = VARIANTS[variant_id]
-            sub = df[df['variant'] == variant_id]
-            vals = []
-            for s in bar_sensors:
-                row = sub[sub['num_sensors'] == s]
-                vals.append(row.iloc[0][y_col] if not row.empty else 0)
-            offset = (i - (n_variants - 1) / 2) * bar_width
-            ax.bar(x_positions + offset, vals, bar_width,
-                   label=info['label'], color=info['color'], zorder=3)
-        if use_log:
-            ax.set_yscale('log')
-        ax.set_xticks(x_positions)
-        ax.set_xticklabels([str(s) for s in bar_sensors])
-        ax.set_xlabel('Number of Sensors')
-        ax.set_ylabel(y_label)
-        setup_axes(ax)
+    for i, variant_id in enumerate(variant_ids):
+        info = VARIANTS[variant_id]
+        sub = df[df['variant'] == variant_id]
+        vals = []
+        for s in bar_sensors:
+            row = sub[sub['num_sensors'] == s]
+            vals.append(row.iloc[0][y_col] if not row.empty else 0)
+        offset = (i - (n_variants - 1) / 2) * bar_width
+        ax.bar(x_positions + offset, vals, bar_width,
+               label=info['label'], color=info['color'], zorder=3)
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels([str(s) for s in bar_sensors])
+    ax.set_xlabel('Number of Sensors')
+    ax.set_ylabel(y_label)
+    ax.legend(loc='upper left', frameon=True)
+    setup_axes(ax)
+    fig.tight_layout()
 
-    # Single shared legend at the top
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='upper center', ncol=4, frameon=True,
-              bbox_to_anchor=(0.5, 1.02))
-    fig.tight_layout(rect=[0, 0, 1, 0.94])
-
-    out_path = OUTPUT_DIR / 'graph8_ablation_aggregation.png'
+    out_path = OUTPUT_DIR / 'graph1_ablation_aggregation.png'
     fig.savefig(out_path, bbox_inches='tight')
     print(f"Generated {out_path}")
     plt.close(fig)
@@ -395,39 +363,33 @@ def plot_exp9_scheduling_efficiency():
         print("No data found for experiment exp9_scheduling_efficiency")
         return
 
-    subplots_cfg = [
-        ('scheduling_latency_ms', 'Scheduling Latency (ms)'),
-        ('workload_imbalance',    'Workload Imbalance ($I_W$)'),
-    ]
+    fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5), dpi=300)
+    y_col = 'scheduling_latency_ms'
+    y_label = 'Scheduling Latency (ms)'
 
-    for ax, (y_col, y_label) in zip(axes, subplots_cfg):
-        for scheme_id, df in data.items():
-            if y_col not in df.columns:
-                continue
-            info = exp9_schemes[scheme_id]
-            ax.plot(df['num_fog_nodes'], df[y_col],
-                    label=info['label'], color=info['color'],
-                    marker=info['marker'], linewidth=2.5, markersize=8,
-                    zorder=5 if scheme_id == 'plosha_rmfr' else 3)
-        ax.set_xlabel('Number of Fog Nodes')
-        ax.set_ylabel(y_label)
-        setup_axes(ax)
+    for scheme_id, df in data.items():
+        if y_col not in df.columns:
+            continue
+        info = exp9_schemes[scheme_id]
+        ax.plot(df['num_fog_nodes'], df[y_col],
+                label=info['label'], color=info['color'],
+                marker=info['marker'], linewidth=2.5, markersize=8,
+                zorder=5 if scheme_id == 'plosha_rmfr' else 3)
+    ax.set_xlabel('Number of Fog Nodes')
+    ax.set_ylabel(y_label)
+    ax.set_yscale('log')
+    setup_axes(ax)
 
-    # Scheduling latency spans ~4 orders of magnitude — use log scale
-    axes[0].set_yscale('log')
-
-    # Shared legend — Refs first, then Ours
-    handles, labels = axes[0].get_legend_handles_labels()
+    # Legend — Refs first, then Ours
+    handles, labels = ax.get_legend_handles_labels()
     sorted_pairs = sorted(zip(handles, labels),
                           key=lambda p: (1 if 'Ours' in p[1] else 0, p[1]))
     handles_sorted, labels_sorted = zip(*sorted_pairs)
-    fig.legend(handles_sorted, labels_sorted, loc='upper center', ncol=4,
-              frameon=True, bbox_to_anchor=(0.5, 1.02))
-    fig.tight_layout(rect=[0, 0, 1, 0.94])
+    ax.legend(handles_sorted, labels_sorted, loc='upper left', frameon=True)
+    fig.tight_layout()
 
-    out_path = OUTPUT_DIR / 'graph9_scheduling_efficiency.png'
+    out_path = OUTPUT_DIR / 'graph2_scheduling_efficiency.png'
     fig.savefig(out_path, bbox_inches='tight')
     print(f"Generated {out_path}")
     plt.close(fig)
