@@ -40,40 +40,31 @@ PLOSHA-RMFR/
 ├── schemes/
 │   ├── plosha_rmfr/                         # [ours] PLOSHA-RMFR
 │   │   ├── src/                             # Core DES engine
-│   │   ├── exp1_sensor_scalability/
-│   │   ├── exp2_fog_scalability/
-│   │   ├── exp3_workload_intensity/
-│   │   ├── exp4_failure_rate/
-│   │   ├── exp5_loss_exposure/
-│   │   ├── exp6_recovery_comm/
-│   │   └── exp7_aflto_ablation/
+│   │   ├── exp1_ablation_aggregation/
+│   │   ├── exp2_scheduling_efficiency/
+│   │   ├── exp3_failure_rate/
+│   │   ├── exp4_loss_exposure/
+│   │   ├── exp5_recovery_comm/
+│   │   └── exp6_aflto_ablation/
 │   ├── robust_iiot/                         # Ref[24] — Shang et al.
 │   │   ├── src/
-│   │   ├── exp1_sensor_scalability/
-│   │   ├── exp3_workload_intensity/
-│   │   └── exp5_loss_exposure/
+│   │   └── exp4_loss_exposure/
 │   ├── fed_dqn/                             # Ref[22] — Choppara & Mangalampalli
 │   │   ├── src/
-│   │   ├── exp1_sensor_scalability/
-│   │   ├── exp2_fog_scalability/
-│   │   ├── exp3_workload_intensity/
-│   │   └── exp4_failure_rate/
+│   │   ├── exp2_scheduling_efficiency/
+│   │   └── exp3_failure_rate/
 │   ├── fault_tolerant_workflow/             # Ref[37] — Ren & Yao
 │   │   ├── src/
-│   │   ├── exp1_sensor_scalability/
-│   │   ├── exp2_fog_scalability/
-│   │   ├── exp3_workload_intensity/
-│   │   ├── exp4_failure_rate/
-│   │   ├── exp5_loss_exposure/
-│   │   └── exp6_recovery_comm/
+│   │   ├── exp2_scheduling_efficiency/
+│   │   ├── exp3_failure_rate/
+│   │   ├── exp4_loss_exposure/
+│   │   └── exp5_recovery_comm/
 │   └── ft_serverless_edge/                  # Ref[38] — Xu et al.
 │       ├── src/
-│       ├── exp1_sensor_scalability/
-│       ├── exp2_fog_scalability/
-│       ├── exp3_workload_intensity/
-│       ├── exp4_failure_rate/
-│       ├── exp5_loss_exposure/
-│       └── exp6_recovery_comm/
+│       ├── exp2_scheduling_efficiency/
+│       ├── exp3_failure_rate/
+│       ├── exp4_loss_exposure/
+│       └── exp5_recovery_comm/
 ├── plots/
 │   ├── generate_plots.py                    # Central plotting script
 │   └── output/                              # Generated graphs

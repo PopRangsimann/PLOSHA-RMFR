@@ -1,7 +1,7 @@
 // Experiment 9: Scheduling Efficiency — FedDQN (Ref[22])
 // Sweeps number of fog nodes from 5 to 50
 // Measures: scheduling_latency_ms, workload_imbalance
-// Output: exp9_scheduling_efficiency/results.csv
+// Output: exp2_scheduling_efficiency/results.csv
 
 #include "fed_dqn_sim.hpp"
 #include <iostream>
@@ -11,7 +11,7 @@
 
 int main() {
     const std::string dataset_path = "../../../dataset/plosha_dataset.csv";
-    const std::string output_path = "../exp9_scheduling_efficiency/results.csv";
+    const std::string output_path = "../exp2_scheduling_efficiency/results.csv";
     const int NUM_SENSORS = 12600;
     const int NUM_VMS_PER_NODE = 4;
     const int NUM_EPISODES = 10;
@@ -28,7 +28,7 @@ int main() {
     }
 
     // Create output directory
-    system("mkdir -p ../exp9_scheduling_efficiency");
+    system("mkdir -p ../exp2_scheduling_efficiency");
 
     std::ofstream out(output_path);
     if (!out.is_open()) {

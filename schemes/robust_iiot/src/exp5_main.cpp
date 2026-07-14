@@ -1,7 +1,7 @@
 // Experiment 5: Loss Exposure — Robust IIoT (Ref[24])
 // Sweeps number of micro-slots from 1 to 20
 // Measures: loss exposure fraction (fraction of data lost when one slot fails)
-// Output: exp5_loss_exposure/results.csv
+// Output: exp4_loss_exposure/results.csv
 //
 // NOTE: Robust IIoT does NOT have a micro-slot architecture.
 // It performs monolithic aggregation at the ES level.
@@ -20,7 +20,7 @@
 
 int main() {
     const std::string dataset_path = "../../../dataset/plosha_dataset.csv";
-    const std::string output_path = "../exp5_loss_exposure/results.csv";
+    const std::string output_path = "../exp4_loss_exposure/results.csv";
     const int NUM_SENSORS = 1000;
     const int NUM_EDGE_SERVERS = 5;
     const int PAILLIER_BITS = 1024;

@@ -288,7 +288,7 @@ void FTEngine::runExp3_WorkloadIntensity(const ExperimentConfig& config) {
 
 void FTEngine::runExp4_FailureRate(const ExperimentConfig& config) {
     std::cout << "\n=== Experiment 4: Failure Rate ===\n";
-    SweepConfig sweep{"failure_rate", {0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20}, config.output_dir + "/exp4_failure_rate"};
+    SweepConfig sweep{"failure_rate", {0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20}, config.output_dir + "/exp3_failure_rate"};
     ExperimentConfig exp_config = config;
     exp_config.num_sensors = 1000;
     exp_config.num_fog_nodes = 10;
@@ -298,7 +298,7 @@ void FTEngine::runExp4_FailureRate(const ExperimentConfig& config) {
 
 void FTEngine::runExp5_LossExposure(const ExperimentConfig& config) {
     std::cout << "\n=== Experiment 5: Aggregation-Loss Exposure ===\n";
-    SweepConfig sweep{"micro_slots", {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20}, config.output_dir + "/exp5_loss_exposure"};
+    SweepConfig sweep{"micro_slots", {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20}, config.output_dir + "/exp4_loss_exposure"};
     ExperimentConfig exp_config = config;
     exp_config.num_sensors = 1000;
     exp_config.num_fog_nodes = 10;
@@ -309,7 +309,7 @@ void FTEngine::runExp5_LossExposure(const ExperimentConfig& config) {
 
 void FTEngine::runExp6_RecoveryComm(const ExperimentConfig& config) {
     std::cout << "\n=== Experiment 6: Recovery Communication Overhead ===\n";
-    SweepConfig sweep{"incomplete_micro_slots", {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, config.output_dir + "/exp6_recovery_comm"};
+    SweepConfig sweep{"incomplete_micro_slots", {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, config.output_dir + "/exp5_recovery_comm"};
     ExperimentConfig exp_config = config;
     exp_config.num_sensors = 1000;
     exp_config.num_fog_nodes = 10;
@@ -321,7 +321,7 @@ void FTEngine::runExp6_RecoveryComm(const ExperimentConfig& config) {
 void FTEngine::runExp9_SchedulingEfficiency(const ExperimentConfig& config) {
     std::cout << "\n=== Experiment 9: Scheduling Efficiency ===\n";
     SweepConfig sweep{"num_fog_nodes", {5, 10, 15, 20, 25, 30, 35, 40, 45, 50},
-                      config.output_dir + "/exp9_scheduling_efficiency"};
+                      config.output_dir + "/exp2_scheduling_efficiency"};
     ExperimentConfig exp_config = config;
     exp_config.num_sensors = 12600;
     exp_config.failure_rate = 0.0;

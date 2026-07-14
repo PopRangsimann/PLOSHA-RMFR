@@ -30,13 +30,13 @@ ft_serverless_edge/
 ├── exp3_workload_intensity/
 │   ├── run.sh
 │   └── results.csv
-├── exp4_failure_rate/
+├── exp3_failure_rate/
 │   ├── run.sh
 │   └── results.csv
-├── exp5_loss_exposure/
+├── exp4_loss_exposure/
 │   ├── run.sh
 │   └── results.csv
-├── exp6_recovery_comm/
+├── exp5_recovery_comm/
 │   ├── run.sh
 │   └── results.csv
 └── README.md
@@ -247,7 +247,7 @@ Delay grows roughly linearly with workload intensity. The queue utilisation rema
 | Secondary 1 | Completeness (fraction of successful requests) |
 | Secondary 2 | Availability |
 
-**Script:** `exp4_failure_rate/run.sh`
+**Script:** `exp3_failure_rate/run.sh`
 
 **Results summary (`results.csv`):**
 
@@ -279,7 +279,7 @@ Completeness remains at 100% across all failure rates thanks to active-standby f
 | Fixed sensors | 1000 |
 | Primary metric | Average loss exposure ratio (0 = fully protected, 1 = fully exposed) |
 
-**Script:** `exp5_loss_exposure/run.sh`
+**Script:** `exp4_loss_exposure/run.sh`
 
 **Results summary (`results.csv`):**
 
@@ -312,7 +312,7 @@ Loss exposure decreases exponentially with K; ≥14 micro-slots achieves near-ze
 | Fixed sensors | 1000 (all forced into failure/recovery mode) |
 | Primary metric | Avg recovery communication cost (KB per request) |
 
-**Script:** `exp6_recovery_comm/run.sh`
+**Script:** `exp5_recovery_comm/run.sh`
 
 **Results summary (`results.csv`):**
 
@@ -343,9 +343,9 @@ cd src/ && make && cd ..
 bash exp1_sensor_scalability/run.sh
 bash exp2_fog_scalability/run.sh
 bash exp3_workload_intensity/run.sh
-bash exp4_failure_rate/run.sh
-bash exp5_loss_exposure/run.sh
-bash exp6_recovery_comm/run.sh
+bash exp3_failure_rate/run.sh
+bash exp4_loss_exposure/run.sh
+bash exp5_recovery_comm/run.sh
 ```
 
 Each script auto-compiles the binary if missing, then sweeps its variable range and appends results to `results.csv`.

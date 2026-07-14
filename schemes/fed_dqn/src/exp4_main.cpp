@@ -1,7 +1,7 @@
 // Experiment 4: Failure Rate — FedDQN (Ref[22])
 // Sweeps fog-node failure rate from 2% to 20%
 // Measures: recovery latency (ms), aggregation completeness, system availability
-// Output: exp4_failure_rate/results.csv
+// Output: exp3_failure_rate/results.csv
 
 #include "fed_dqn_sim.hpp"
 #include <iostream>
@@ -10,7 +10,7 @@
 
 int main() {
     const std::string dataset_path = "../../../dataset/plosha_dataset.csv";
-    const std::string output_path = "../exp4_failure_rate/results.csv";
+    const std::string output_path = "../exp3_failure_rate/results.csv";
     const int NUM_FOG_NODES = 10;
     const int NUM_VMS_PER_NODE = 4;
     const int NUM_SENSORS = 2000;

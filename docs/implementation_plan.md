@@ -18,7 +18,7 @@ All data is produced by real C++ DES simulation runs.
 
 - **Sweep**: num_sensors = 500..5000
 - **Metrics**: aggregation_latency_ms, processing_overhead_ms, loss_exposure_fraction
-- **Output**: `schemes/plosha_rmfr/exp8_ablation_aggregation/results.csv`
+- **Output**: `schemes/plosha_rmfr/exp1_ablation_aggregation/results.csv`
 
 ## Experiment 9: Scheduling Efficiency
 
@@ -26,7 +26,7 @@ Compares PLOSHA-RMFR vs FedDQN, FT-Workflow, FT-Serverless-Edge.
 
 - **Sweep**: num_fog_nodes = 5..50
 - **Metrics**: scheduling_latency_ms, workload_imbalance (I_W)
-- **Output**: `schemes/<scheme>/exp9_scheduling_efficiency/results.csv`
+- **Output**: `schemes/<scheme>/exp2_scheduling_efficiency/results.csv`
 
 ## Files Modified
 
@@ -34,25 +34,25 @@ Compares PLOSHA-RMFR vs FedDQN, FT-Workflow, FT-Serverless-Edge.
 - `config.hpp` — add `hierarchical_aggregation` flag
 - `metrics.hpp` / `metrics.cpp` — add scheduling_latency_ms, workload_imbalance, processing_overhead_ms; add ablation CSV writer
 - `plosha.hpp` / `plosha.cpp` — add processing_overhead_ms, hierarchical flag
-- `des_engine.hpp` / `des_engine.cpp` — add runExp8, runExp9; add scheduling timing in runEpoch
-- `main.cpp` — update to support experiments 1–9
+- `des_engine.hpp` / `des_engine.cpp` — add runExp1 (ablation), runExp2 (scheduling); add scheduling timing in runEpoch
+- `main.cpp` — update to support experiments 1–6
 
 ### FedDQN
 - `fed_dqn_sim.hpp` / `fed_dqn_sim.cpp` — add scheduling_latency_ms, workload_imbalance to metrics
-- `exp9_main.cpp` — new experiment binary
-- `Makefile` — add exp9 target
+- `exp2_main.cpp` — new experiment binary
+- `Makefile` — add exp2 target
 
 ### Fault-Tolerant Workflow
-- `ft_engine.hpp` / `ft_engine.cpp` — add runExp9, scheduling timing
-- `main.cpp` — add case 9
+- `ft_engine.hpp` / `ft_engine.cpp` — add runExp2, scheduling timing
+- `main.cpp` — add case 2
 
 ### FT-Serverless Edge
-- `ft_serverless_edge.hpp` — add runExp9
-- `ft_experiments.cpp` — add runExp9
-- `main.cpp` — add case 9
+- `ft_serverless_edge.hpp` — add runExp2
+- `ft_experiments.cpp` — add runExp2
+- `main.cpp` — add case 2
 
 ### Plots
-- `generate_plots.py` — update exp8 for variant CSV format
+- `generate_plots.py` — update exp1 for variant CSV format
 
 ### Benchmark
-- `run_benchmark.sh` — add exp8/exp9 runs
+- `run_benchmark.sh` — add exp1/exp2 runs

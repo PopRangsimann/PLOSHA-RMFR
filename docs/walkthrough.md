@@ -23,8 +23,8 @@ Previously created synthetic CSV files were **deleted**.
 
 **Sweep**: `num_sensors` = 500, 1000, 1500, ..., 5000  
 **Metrics**: `aggregation_latency_ms`, `processing_overhead_ms`, `loss_exposure_fraction`  
-**Output**: `schemes/plosha_rmfr/exp8_ablation_aggregation/results.csv`  
-**Plot**: 3-panel figure → `plots/output/graph8_ablation_aggregation.png`
+**Output**: `schemes/plosha_rmfr/exp1_ablation_aggregation/results.csv`  
+**Plot**: `plots/output/graph1_ablation_aggregation.png`
 
 ---
 
@@ -43,8 +43,8 @@ Previously created synthetic CSV files were **deleted**.
 
 **Sweep**: `num_fog_nodes` = 5, 10, 15, ..., 50  
 **Metrics**: `scheduling_latency_ms`, `workload_imbalance`  
-**Output**: `schemes/<scheme>/exp9_scheduling_efficiency/results.csv`  
-**Plot**: 2-panel figure → `plots/output/graph9_scheduling_efficiency.png`
+**Output**: `schemes/<scheme>/exp2_scheduling_efficiency/results.csv`  
+**Plot**: `plots/output/graph2_scheduling_efficiency.png`
 
 ---
 
@@ -57,37 +57,37 @@ Previously created synthetic CSV files were **deleted**.
 - **`metrics.cpp`** — Updated `computeAverages()` for new fields. Implemented ablation and scheduling CSV writers
 - **`plosha.hpp`** — Added `processing_overhead_ms` to `AggregationResult`. Added `hierarchical` parameter to `aggregate()`
 - **`plosha.cpp`** — Tracks processing overhead (TEE transform + micro-slot agg time). Conditionally skips fog-level hierarchy step when `hierarchical=false`
-- **`des_engine.hpp`** — Added `runExp8_AblationAggregation()` and `runExp9_SchedulingEfficiency()` declarations
-- **`des_engine.cpp`** — Added scheduling timing in `runEpoch()` (around EWMA prediction). Added workload imbalance computation. Passes `hierarchical_aggregation` to `aggregate()`. Implemented `runExp8` (4 variants × 10 sensor values) and `runExp9` (fog sweep). Updated `runExperiment()`/`runAll()` for experiments 1–9
-- **`main.cpp`** — Updated help text from `1-7` to `1-9`
+- **`des_engine.hpp`** — Added `runExp1_AblationAggregation()` and `runExp2_SchedulingEfficiency()` declarations
+- **`des_engine.cpp`** — Added scheduling timing in `runEpoch()` (around EWMA prediction). Added workload imbalance computation. Passes `hierarchical_aggregation` to `aggregate()`. Implemented `runExp1` (4 variants × 10 sensor values) and `runExp2` (fog sweep). Updated `runExperiment()`/`runAll()` for experiments 1–6
+- **`main.cpp`** — Updated help text from `1-7` to `1-6`
 
 ### FedDQN (`schemes/fed_dqn/src/`)
 
 - **`fed_dqn_sim.hpp`** — Added `scheduling_latency_ms`, `workload_imbalance` to `FedDQNMetrics`
 - **`fed_dqn_sim.cpp`** — Added `chrono` timing around `SelectAction()` call in the main scheduling loop. Computes workload imbalance from per-node `tasks_assigned` distribution
-- **`exp9_main.cpp`** — **[NEW FILE]** Experiment 9 binary for FedDQN. Sweeps fog nodes 5–50, outputs scheduling CSV
-- **`Makefile`** — Added `exp9_scheduling_efficiency` build target
+- **`exp2_main.cpp`** — **[NEW FILE]** Experiment 2 binary for FedDQN. Sweeps fog nodes 5–50, outputs scheduling CSV
+- **`Makefile`** — Added `exp2_scheduling_efficiency` build target
 
 ### FT-Workflow (`schemes/fault_tolerant_workflow/src/`)
 
-- **`ft_engine.hpp`** — Added `runExp9_SchedulingEfficiency()` declaration
-- **`ft_engine.cpp`** — Added scheduling timing in `runEpoch()` (around performance fluctuation update). Added workload imbalance from queue load. Implemented `runExp9` with scheduling CSV writer. Updated `runExperiment()`/`runAll()` for experiment 9
+- **`ft_engine.hpp`** — Added `runExp2_SchedulingEfficiency()` declaration
+- **`ft_engine.cpp`** — Added scheduling timing in `runEpoch()` (around performance fluctuation update). Added workload imbalance from queue load. Implemented `runExp2` with scheduling CSV writer. Updated `runExperiment()`/`runAll()` for experiment 2
 - **`metrics.hpp`** — Added `scheduling_latency_ms`, `workload_imbalance` to `EpochMetrics` and `SweepPointResult`
 - **`metrics.cpp`** — Updated `computeAverages()` for new fields
-- **`main.cpp`** — Updated help text to include experiment 9
+- **`main.cpp`** — Updated help text to include experiment 2
 
 ### FT-Serverless Edge (`schemes/ft_serverless_edge/src/`)
 
-- **`ft_serverless_edge.hpp`** — Added `runExp9_SchedulingEfficiency()` declaration
-- **`ft_experiments.cpp`** — Added case 9 in `run()` switch. Implemented `runExp9`: times `algorithmFwk()` placement across all requests, computes cloudlet load imbalance
+- **`ft_serverless_edge.hpp`** — Added `runExp2_SchedulingEfficiency()` declaration
+- **`ft_experiments.cpp`** — Added case 2 in `run()` switch. Implemented `runExp2`: times `algorithmFwk()` placement across all requests, computes cloudlet load imbalance
 
 ### Plot Script
 
-- **`plots/generate_plots.py`** — Already had `plot_exp8_ablation_aggregation()` and `plot_exp9_scheduling_efficiency()` from previous session. These read the correct CSV column names that the C++ code now produces
+- **`plots/generate_plots.py`** — Contains `plot_exp1_ablation_aggregation()` and `plot_exp2_scheduling_efficiency()`. These read the correct CSV column names that the C++ code produces
 
 ### Benchmark Runner
 
-- **`run_benchmark.sh`** — Added `./exp9_scheduling_efficiency` run for FedDQN. Added exp9 sweep loop for FT-Serverless Edge (fog counts 5–50)
+- **`run_benchmark.sh`** — Added `./exp2_scheduling_efficiency` run for FedDQN. Added exp2 sweep loop for FT-Serverless Edge (fog counts 5–50)
 
 ### Docs
 
@@ -112,7 +112,7 @@ make clean && make
 # FedDQN experiment 9
 cd schemes/fed_dqn/src
 make clean && make
-./exp9_scheduling_efficiency
+./exp2_scheduling_efficiency
 
 # FT-Workflow experiment 9
 cd schemes/fault_tolerant_workflow/src

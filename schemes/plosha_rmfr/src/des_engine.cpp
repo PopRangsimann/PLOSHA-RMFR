@@ -449,7 +449,7 @@ void DESEngine::runExp4_FailureRate(const ExperimentConfig &config) {
   sweep.variable_name = "failure_rate";
   sweep.sweep_values = {0.02, 0.04, 0.06, 0.08, 0.10,
                         0.12, 0.14, 0.16, 0.18, 0.20};
-  sweep.output_dir = config.output_dir + "/exp4_failure_rate";
+  sweep.output_dir = config.output_dir + "/exp3_failure_rate";
 
   ExperimentConfig exp_config = config;
   exp_config.num_sensors = 1000;
@@ -466,7 +466,7 @@ void DESEngine::runExp5_LossExposure(const ExperimentConfig &config) {
   SweepConfig sweep;
   sweep.variable_name = "micro_slots";
   sweep.sweep_values = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20};
-  sweep.output_dir = config.output_dir + "/exp5_loss_exposure";
+  sweep.output_dir = config.output_dir + "/exp4_loss_exposure";
 
   ExperimentConfig exp_config = config;
   exp_config.num_sensors = 1000;
@@ -484,7 +484,7 @@ void DESEngine::runExp6_RecoveryComm(const ExperimentConfig &config) {
   SweepConfig sweep;
   sweep.variable_name = "incomplete_micro_slots";
   sweep.sweep_values = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  sweep.output_dir = config.output_dir + "/exp6_recovery_comm";
+  sweep.output_dir = config.output_dir + "/exp5_recovery_comm";
 
   ExperimentConfig exp_config = config;
   exp_config.num_sensors = 1000;
@@ -522,7 +522,7 @@ void DESEngine::runExp7_AFLTOAblation(const ExperimentConfig &config) {
       8, 6, 4, 2, 1    // cooldown
   };
 
-  std::string output_dir = config.output_dir + "/exp7_aflto_ablation";
+  std::string output_dir = config.output_dir + "/exp6_aflto_ablation";
   std::vector<SweepPointResult> results;
 
   for (int aflto = 0; aflto <= 1; ++aflto) {
@@ -703,7 +703,7 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
   };
 
   std::vector<double> sensor_values = {500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000};
-  std::string output_dir = config.output_dir + "/exp8_ablation_aggregation";
+  std::string output_dir = config.output_dir + "/exp1_ablation_aggregation";
   std::vector<MetricsCollector::AblationRow> all_rows;
 
   for (const auto &variant : variants) {
@@ -779,7 +779,7 @@ void DESEngine::runExp9_SchedulingEfficiency(const ExperimentConfig &config) {
   SweepConfig sweep;
   sweep.variable_name = "num_fog_nodes";
   sweep.sweep_values = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50};
-  sweep.output_dir = config.output_dir + "/exp9_scheduling_efficiency";
+  sweep.output_dir = config.output_dir + "/exp2_scheduling_efficiency";
 
   ExperimentConfig exp_config = config;
   exp_config.num_sensors = 12600; // LCM of {5,10,15,20,25,30,35,40,45,50}

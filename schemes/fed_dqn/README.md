@@ -81,7 +81,7 @@ make all
 ./exp1_sensor_scalability
 ./exp2_fog_scalability
 ./exp3_workload_intensity
-./exp4_failure_rate
+./exp3_failure_rate
 ```
 
 ## Output Format

@@ -24,7 +24,7 @@ echo ""
 # ---------------------------------------------------------
 echo "[1b/5] Running PLOSHA-RMFR (Ours) in Intel SGX..."
 # Copy native results to backup before SGX overwrites them
-for d in exp1_sensor_scalability exp2_fog_scalability exp3_workload_intensity exp4_failure_rate exp5_loss_exposure exp6_recovery_comm exp7_aflto exp8_ablation_aggregation exp9_scheduling_efficiency; do
+for d in exp1_ablation_aggregation exp2_scheduling_efficiency exp3_failure_rate exp4_loss_exposure exp5_recovery_comm exp6_aflto_ablation; do
   if [ -d "$ROOT_DIR/schemes/plosha_rmfr/$d" ]; then
     mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/${d}_native"
     cp -r "$ROOT_DIR/schemes/plosha_rmfr/$d/"* "$ROOT_DIR/schemes/plosha_rmfr/${d}_native/" 2>/dev/null || true
@@ -71,8 +71,8 @@ echo "  -> Running Exp 1 (Sensor Scalability)..."
 ./exp1_sensor_scalability
 echo "  -> Running Exp 3 (Workload Intensity)..."
 ./exp3_workload_intensity
-echo "  -> Running Exp 5 (Loss Exposure)..."
-./exp5_loss_exposure
+echo "  -> Running Exp 4 (Loss Exposure)..."
+./exp4_loss_exposure
 echo "✔ Robust IIoT completed."
 echo ""
 
@@ -88,10 +88,10 @@ echo "  -> Running Exp 2 (Fog Scalability)..."
 ./exp2_fog_scalability
 echo "  -> Running Exp 3 (Workload Intensity)..."
 ./exp3_workload_intensity
-echo "  -> Running Exp 4 (Failure Rate)..."
-./exp4_failure_rate
-echo "  -> Running Exp 9 (Scheduling Efficiency)..."
-./exp9_scheduling_efficiency
+echo "  -> Running Exp 3 (Failure Rate)..."
+./exp3_failure_rate
+echo "  -> Running Exp 2 (Scheduling Efficiency)..."
+./exp2_scheduling_efficiency
 echo "✔ FedDQN completed."
 echo ""
 
@@ -147,36 +147,36 @@ for v in 1 2 3 4 5 6 7 8 9 10; do
   run_avg 3 $v >> ../exp3_workload_intensity/results.csv
 done
 
-echo "  -> Running Exp 4 (Failure Rate)..."
-mkdir -p ../exp4_failure_rate
-echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp4_failure_rate/results.csv
+echo "  -> Running Exp 3 (Failure Rate)..."
+mkdir -p ../exp3_failure_rate
+echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp3_failure_rate/results.csv
 for v in 0.02 0.04 0.06 0.08 0.10 0.12 0.14 0.16 0.18 0.20; do
-  run_avg 4 $v >> ../exp4_failure_rate/results.csv
+  run_avg 4 $v >> ../exp3_failure_rate/results.csv
 done
 
-echo "  -> Running Exp 5 (Loss Exposure)..."
-mkdir -p ../exp5_loss_exposure
-echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp5_loss_exposure/results.csv
+echo "  -> Running Exp 4 (Loss Exposure)..."
+mkdir -p ../exp4_loss_exposure
+echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp4_loss_exposure/results.csv
 for v in 1 2 3 4 5 6 7 8 9 10 12 14 16 18 20; do
-  run_avg 5 $v >> ../exp5_loss_exposure/results.csv
+  run_avg 5 $v >> ../exp4_loss_exposure/results.csv
 done
 
-echo "  -> Running Exp 6 (Recovery Communication)..."
-mkdir -p ../exp6_recovery_comm
-echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp6_recovery_comm/results.csv
+echo "  -> Running Exp 5 (Recovery Communication)..."
+mkdir -p ../exp5_recovery_comm
+echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp5_recovery_comm/results.csv
 for v in 1 2 3 4 5 6 7 8 9 10; do
-  run_avg 6 $v >> ../exp6_recovery_comm/results.csv
+  run_avg 6 $v >> ../exp5_recovery_comm/results.csv
 done
 
-echo "  -> Running Exp 9 (Scheduling Efficiency)..."
-mkdir -p ../exp9_scheduling_efficiency
-echo "num_fog_nodes,scheduling_latency_ms,workload_imbalance" > ../exp9_scheduling_efficiency/results.csv
+echo "  -> Running Exp 2 (Scheduling Efficiency)..."
+mkdir -p ../exp2_scheduling_efficiency
+echo "num_fog_nodes,scheduling_latency_ms,workload_imbalance" > ../exp2_scheduling_efficiency/results.csv
 for v in 5 10 15 20 25 30 35 40 45 50; do
   line=$(./ft_serverless_sim --experiment 9 --variable $v --cloudlets $v --sensors 12600 --seed $BASE_SEED --dataset "$DATASET_PATH")
   # primary_metric = scheduling_latency_ms, secondary_1 = workload_imbalance
   sched_lat=$(echo "$line" | awk -F',' '{print $2}')
   imbalance=$(echo "$line" | awk -F',' '{print $3}')
-  printf "%s,%.6f,%.6f\n" "$v" "${sched_lat:-0}" "${imbalance:-0}" >> ../exp9_scheduling_efficiency/results.csv
+  printf "%s,%.6f,%.6f\n" "$v" "${sched_lat:-0}" "${imbalance:-0}" >> ../exp2_scheduling_efficiency/results.csv
 done
 echo "✔ FT-Serverless Edge completed."
 echo ""

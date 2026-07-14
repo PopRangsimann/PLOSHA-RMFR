@@ -76,17 +76,11 @@ def get_data(exp_dir_name):
                 df = pd.read_csv(csv_path)
                 # Map generic columns to PLOSHA expected columns based on experiment name
                 if 'variable_value' in df.columns:
-                    if exp_dir_name == 'exp1_sensor_scalability':
-                        df = df.rename(columns={'variable_value': 'num_sensors', 'primary_metric': 'aggregation_latency_ms'})
-                    elif exp_dir_name == 'exp2_fog_scalability':
-                        df = df.rename(columns={'variable_value': 'num_fog_nodes', 'primary_metric': 'aggregation_latency_ms'})
-                    elif exp_dir_name == 'exp3_workload_intensity':
-                        df = df.rename(columns={'variable_value': 'workload_multiplier', 'primary_metric': 'aggregation_latency_ms'})
-                    elif exp_dir_name == 'exp4_failure_rate':
+                    if exp_dir_name == 'exp3_failure_rate':
                         df = df.rename(columns={'variable_value': 'failure_rate', 'primary_metric': 'recovery_latency_ms', 'secondary_metric_1': 'aggregation_completeness'})
-                    elif exp_dir_name == 'exp5_loss_exposure':
+                    elif exp_dir_name == 'exp4_loss_exposure':
                         df = df.rename(columns={'variable_value': 'micro_slots', 'primary_metric': 'loss_exposure_fraction'})
-                    elif exp_dir_name == 'exp6_recovery_comm':
+                    elif exp_dir_name == 'exp5_recovery_comm':
                         df = df.rename(columns={'variable_value': 'incomplete_micro_slots', 'primary_metric': 'communication_overhead_KB'})
                 data[scheme_id] = df
             except Exception as e:
@@ -155,19 +149,19 @@ def main():
     print("Generating plots...")
 
     # Graph 1: Ablation of PLOSHA Aggregation Architecture
-    plot_exp8_ablation_aggregation()
+    plot_exp1_ablation_aggregation()
 
     # Graph 2: Scheduling Efficiency
-    plot_exp9_scheduling_efficiency()
+    plot_exp2_scheduling_efficiency()
 
     # Graph 3: Failure Rate
-    plot_experiment('exp4_failure_rate',
+    plot_experiment('exp3_failure_rate',
                     x_col='failure_rate', y_col='recovery_latency_ms',
                     x_label='Failure Rate', y_label='Recovery Latency (ms)',
                     output_filename='graph3_failure_rate.png')
 
     # Graph 4: Loss Exposure
-    plot_experiment('exp5_loss_exposure',
+    plot_experiment('exp4_loss_exposure',
                     x_col='micro_slots', y_col='loss_exposure_fraction',
                     x_label='Number of Micro-slots', y_label='Loss Exposure Fraction',
                     output_filename='graph4_loss_exposure.png',
@@ -175,24 +169,24 @@ def main():
                     exclude_schemes=['ft_serverless_edge'])
 
     # Graph 5: Recovery Communication
-    plot_experiment('exp6_recovery_comm',
+    plot_experiment('exp5_recovery_comm',
                     x_col='incomplete_micro_slots', y_col='communication_overhead_KB',
                     x_label='Incomplete Micro-slots', y_label='Communication Overhead (KB)',
                     output_filename='graph5_recovery_comm.png')
 
     # Graph 6: AFLTO Ablation
-    plot_exp7_aflto_ablation()
+    plot_exp6_aflto_ablation()
 
 
-def plot_exp7_aflto_ablation():
-    """Generate a grouped bar chart for the AFLTO ablation study (Fig. 8).
+def plot_exp6_aflto_ablation():
+    """Generate a grouped bar chart for the AFLTO ablation study.
 
     This is PLOSHA-only: compares aggregation completeness and system
     availability with AFLTO enabled vs. disabled.
     """
-    csv_path = BASE_DIR / 'plosha_rmfr' / 'exp7_aflto_ablation' / 'results.csv'
+    csv_path = BASE_DIR / 'plosha_rmfr' / 'exp6_aflto_ablation' / 'results.csv'
     if not csv_path.exists():
-        print(f"No data found for experiment exp7_aflto_ablation")
+        print(f"No data found for experiment exp6_aflto_ablation")
         return
 
     try:
@@ -207,7 +201,7 @@ def plot_exp7_aflto_ablation():
     elif 'variable_value' in df.columns:
         toggle_col = 'variable_value'
     else:
-        print("exp7: cannot find AFLTO toggle column")
+        print("exp6: cannot find AFLTO toggle column")
         return
 
     # Map metrics — handle both PLOSHA-native and generic CSV formats
@@ -215,7 +209,7 @@ def plot_exp7_aflto_ablation():
     avail_col = 'system_availability' if 'system_availability' in df.columns else 'secondary_metric_2'
 
     if comp_col not in df.columns or avail_col not in df.columns:
-        print("exp7: missing completeness or availability columns")
+        print("exp6: missing completeness or availability columns")
         return
 
     # Extract values for disabled (0) and enabled (1)
@@ -223,7 +217,7 @@ def plot_exp7_aflto_ablation():
     row_on  = df[df[toggle_col] == 1.0].iloc[0] if len(df[df[toggle_col] == 1.0]) > 0 else None
 
     if row_off is None or row_on is None:
-        print("exp7: need both AFLTO=0 and AFLTO=1 rows")
+        print("exp6: need both AFLTO=0 and AFLTO=1 rows")
         return
 
     import numpy as np
@@ -264,16 +258,15 @@ def plot_exp7_aflto_ablation():
     plt.close(fig)
 
 
-def plot_exp8_ablation_aggregation():
-    """Generate a 3-subplot figure for the PLOSHA aggregation ablation study.
+def plot_exp1_ablation_aggregation():
+    """Generate a grouped bar chart for the PLOSHA aggregation ablation study.
 
     Compares Flat-Epoch, Fixed-Slot, Adaptive-Slot, and Full PLOSHA
-    across aggregation latency, processing overhead, and loss exposure.
-    Subplot 1 uses a grouped bar chart for clarity; subplots 2-3 use line plots.
+    across aggregation latency.
     """
-    csv_path = BASE_DIR / 'plosha_rmfr' / 'exp8_ablation_aggregation' / 'results.csv'
+    csv_path = BASE_DIR / 'plosha_rmfr' / 'exp1_ablation_aggregation' / 'results.csv'
     if not csv_path.exists():
-        print(f"No data found for experiment exp8_ablation_aggregation")
+        print(f"No data found for experiment exp1_ablation_aggregation")
         return
 
     try:
@@ -327,14 +320,14 @@ def plot_exp8_ablation_aggregation():
     plt.close(fig)
 
 
-def plot_exp9_scheduling_efficiency():
-    """Generate a 2-subplot figure for scheduling efficiency.
+def plot_exp2_scheduling_efficiency():
+    """Generate a line plot for scheduling efficiency.
 
     Compares PLOSHA-RMFR with FedDQN, FT-Workflow, and FT-Serverless-Edge
-    on scheduling latency and workload imbalance.
+    on scheduling latency.
     """
     # Schemes to compare for this experiment
-    exp9_schemes = {
+    exp2_schemes = {
         'plosha_rmfr':              SCHEMES['plosha_rmfr'],
         'fed_dqn':                  SCHEMES['fed_dqn'],
         'fault_tolerant_workflow':  SCHEMES['fault_tolerant_workflow'],
@@ -343,8 +336,8 @@ def plot_exp9_scheduling_efficiency():
 
     # Load data for each scheme
     data = {}
-    for scheme_id, info in exp9_schemes.items():
-        csv_path = BASE_DIR / scheme_id / 'exp9_scheduling_efficiency' / 'results.csv'
+    for scheme_id, info in exp2_schemes.items():
+        csv_path = BASE_DIR / scheme_id / 'exp2_scheduling_efficiency' / 'results.csv'
         if csv_path.exists():
             try:
                 df = pd.read_csv(csv_path)
@@ -360,7 +353,7 @@ def plot_exp9_scheduling_efficiency():
                 print(f"Error reading {csv_path}: {e}")
 
     if not data:
-        print("No data found for experiment exp9_scheduling_efficiency")
+        print("No data found for experiment exp2_scheduling_efficiency")
         return
 
     fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
@@ -371,7 +364,7 @@ def plot_exp9_scheduling_efficiency():
     for scheme_id, df in data.items():
         if y_col not in df.columns:
             continue
-        info = exp9_schemes[scheme_id]
+        info = exp2_schemes[scheme_id]
         ax.plot(df['num_fog_nodes'], df[y_col],
                 label=info['label'], color=info['color'],
                 marker=info['marker'], linewidth=2.5, markersize=8,

@@ -49,7 +49,7 @@ src/
 |---|-----------|---------------------|--------|
 | 1 | Sensor Scalability | Number of sensors (500–5000) | `exp1_sensor_scalability/results.csv` |
 | 3 | Workload Intensity | Readings per sensor per round | `exp3_workload_intensity/results.csv` |
-| 5 | Loss Exposure | Number of micro-slots (1–20) | `exp5_loss_exposure/results.csv` |
+| 5 | Loss Exposure | Number of micro-slots (1–20) | `exp4_loss_exposure/results.csv` |
 
 ## Build & Run
 
@@ -66,7 +66,7 @@ make all
 # Run individual experiments
 ./exp1_sensor_scalability
 ./exp3_workload_intensity
-./exp5_loss_exposure
+./exp4_loss_exposure
 ```
 
 ## Output Format
