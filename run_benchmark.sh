@@ -46,6 +46,13 @@ echo "  -> Signing SGX enclave..."
 gramine-sgx-sign --manifest plosha_rmfr.manifest --output plosha_rmfr.manifest.sgx
 
 echo "  -> Executing via Gramine-SGX (all experiments)..."
+mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp1_ablation_aggregation"
+mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp2_scheduling_efficiency"
+mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp3_failure_rate"
+mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp3_workload_intensity"
+mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp4_loss_exposure"
+mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp5_recovery_comm"
+mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp6_aflto_ablation"
 gramine-sgx plosha_rmfr --experiment all --epochs 10 --dataset /dataset/plosha_dataset.csv --output /output
 echo "✔ PLOSHA-RMFR (SGX) completed."
 echo ""

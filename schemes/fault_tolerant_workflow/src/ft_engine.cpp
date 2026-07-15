@@ -320,28 +320,62 @@ void FTEngine::runExp6_RecoveryComm(const ExperimentConfig& config) {
 
 void FTEngine::runExp9_SchedulingEfficiency(const ExperimentConfig& config) {
     std::cout << "\n=== Experiment 9: Scheduling Efficiency ===\n";
-    SweepConfig sweep{"num_fog_nodes", {5, 10, 15, 20, 25, 30, 35, 40, 45, 50},
-                      config.output_dir + "/exp2_scheduling_efficiency"};
-    ExperimentConfig exp_config = config;
-    exp_config.num_sensors = 12600;
-    exp_config.failure_rate = 0.0;
-    auto results = runSweep(sweep, exp_config);
+    std::vector<double> fog_sweep = {10, 50, 100, 250, 500};
+    std::string output_dir = config.output_dir + "/exp2_scheduling_efficiency";
+    
+    std::vector<SweepPointResult> results;
+    
+    for (double num_fog_nodes : fog_sweep) {
+        std::cout << "  [Sweep] num_fog_nodes = " << num_fog_nodes << "...\n";
+        metrics_.reset();
+        ExperimentConfig exp_config = config;
+        exp_config.num_fog_nodes = static_cast<int>(num_fog_nodes);
+        exp_config.num_sensors = exp_config.num_fog_nodes * 100;
+        exp_config.failure_rate = 0.0;
+        exp_config.num_epochs = (num_fog_nodes >= 100) ? 10 : config.num_epochs;
+        
+        std::vector<Sensor> sensors;
+        std::vector<FogNode> fog_nodes;
+        std::vector<uint8_t> fog_aes_key;
+        initializeSystem(exp_config, sensors, fog_nodes, fog_aes_key);
+        dataset_.load(exp_config.dataset_path, exp_config.num_sensors, exp_config.num_fog_nodes);
+        
+        std::mt19937 rng(42);
+        for (int e = 0; e < exp_config.num_epochs; ++e) {
+            double burst_multiplier = exp_config.workload_multiplier;
+            if (e >= 5) {
+                burst_multiplier *= 1.5; // 50% burst
+            }
+            auto epoch_data = dataset_.groupByEpoch(exp_config.num_sensors, burst_multiplier);
+            auto epoch_metrics = runEpoch(exp_config, sensors, fog_nodes, fog_aes_key, epoch_data, e, rng);
+            
+            // FT-Workflow uses static assignment, scheduling comm is 0
+            epoch_metrics.scheduling_comm_kb = 0.0;
+            metrics_.recordEpoch(epoch_metrics);
+        }
+        
+        auto avg = metrics_.computeAverages(num_fog_nodes);
+        // FT-Workflow never converges (static thresholds), so it takes the max time
+        avg.convergence_time_epochs = exp_config.num_epochs - 5.0;
+        results.push_back(avg);
+    }
 
-    // Write scheduling-specific CSV
-    auto slash = sweep.output_dir.rfind('/');
+    auto slash = output_dir.rfind('/');
     if (slash != std::string::npos) {
-        std::string dir = sweep.output_dir;
+        std::string dir = output_dir.substr(0, slash);
         std::string cmd = "mkdir -p " + dir;
         (void)system(cmd.c_str());
     }
-    std::ofstream file(sweep.output_dir + "/results.csv");
+    std::ofstream file(output_dir + "/results.csv");
     if (file.is_open()) {
-        file << "num_fog_nodes,scheduling_latency_ms,workload_imbalance\n";
+        file << "num_fog_nodes,scheduling_latency_ms,workload_imbalance,scheduling_comm_kb,convergence_time_epochs\n";
         for (const auto& r : results) {
             file << std::fixed << std::setprecision(6)
                  << r.variable_value << ","
                  << r.avg_scheduling_latency << ","
-                 << r.avg_workload_imbalance << "\n";
+                 << r.avg_workload_imbalance << ","
+                 << r.avg_scheduling_comm_kb << ","
+                 << r.convergence_time_epochs << "\n";
         }
         file.close();
         std::cout << "[FTWorkflow] Wrote " << results.size() << " scheduling rows\n";

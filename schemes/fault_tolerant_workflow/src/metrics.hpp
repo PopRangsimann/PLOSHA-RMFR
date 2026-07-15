@@ -18,6 +18,7 @@ struct EpochMetrics {
     int recovery_frequency = 0;
     double scheduling_latency_ms = 0.0;
     double workload_imbalance = 0.0;
+    double scheduling_comm_kb = 0.0;
 };
 
 struct SweepPointResult {
@@ -32,6 +33,8 @@ struct SweepPointResult {
     double avg_recovery_frequency = 0.0;
     double avg_scheduling_latency = 0.0;
     double avg_workload_imbalance = 0.0;
+    double avg_scheduling_comm_kb = 0.0;
+    double convergence_time_epochs = 0.0;
 };
 
 class MetricsCollector {

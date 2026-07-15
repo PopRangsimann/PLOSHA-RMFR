@@ -17,7 +17,7 @@ struct PredictionVector {
 class EWMAPredictor {
 public:
     // Predict next state using EWMA smoothing (Phase II Step 2)
-    FogState predictState(const FogState& current, const FogState& previous);
+    FogState predictState(const FogState& current, const FogState& prev_ewma);
 
     // Compute remaining capacity (Phase II Step 3, paper Eq. 8)
     double computeCapacity(const FogState& predicted);
@@ -32,7 +32,7 @@ public:
     NodeStatus classifyStatus(double risk, double tau_r);
 
     // Full prediction pipeline
-    PredictionVector predict(const FogState& current, const FogState& previous,
+    PredictionVector predict(const FogState& current, const FogState& prev_ewma,
                              double tau_r = TAU_R_INIT);
 };
 

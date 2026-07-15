@@ -2486,86 +2486,120 @@ times, and the average value is reported.
 
 ### **Experiment 1: Ablation of the PLOSHA Aggregation Architecture** {#experiment-1-ablation-of-the-plosha-aggregation-architecture .unnumbered}
 
-This experiment evaluates the contribution of adaptive micro-slot
-partitioning and hierarchical aggregation independently of the TEE and
-cryptographic implementation. The complete PLOSHA-RMFR framework is
-compared with the following ablation variants:
+This experiment evaluates the individual and joint contributions of
+adaptive micro-slot partitioning and hierarchical aggregation,
+independently of the TEE and cryptographic implementation. The complete
+PLOSHA architecture is compared with the following variants:
 
-1.  **Flat-Epoch**: all reports received during an epoch are aggregated
-    as a single unit without micro-slots;
+1.  **Flat-Epoch**: all encrypted sensor readings received during an
+    aggregation epoch are processed as a single aggregation unit without
+    micro-slot partitioning.
 
-    "'
+2.  **Fixed-Slot**: each aggregation epoch is divided into a fixed
+    number of micro-slots regardless of the predicted processing
+    capacity, reliability, or failure exposure.
 
-2.  **Fixed-Slot**: each epoch is divided into a fixed number of
-    micro-slots, but the granularity is not adjusted according to the
-    predicted capacity or failure exposure;
+3.  **Adaptive-Slot**: the number of micro-slots is adaptively selected
+    according to the predicted operating conditions, but completed
+    micro-slot aggregates are not maintained as reusable hierarchical
+    states. Consequently, aggregation recovery requires recomputation of
+    the affected aggregation results rather than reuse of previously
+    completed micro-slot aggregates.
 
-3.  **Adaptive-Slot**: adaptive micro-slots are used, but their outputs
-    are processed independently without hierarchical aggregation; and
+4.  **Full PLOSHA**: both prediction-driven adaptive micro-slot
+    partitioning and reusable hierarchical aggregation are enabled.
 
-4.  **Full PLOSHA**: prediction-driven adaptive micro-slots and
-    hierarchical aggregation are both enabled. "'
+All variants employ the same TEE-assisted ciphertext transformation,
+Paillier cryptographic parameters, aggregation epoch duration, fog
+hardware, and sensor data. The number of sensors is varied from 500 to
+5000, while the sensor reporting rate is adjusted to emulate light,
+moderate, and heavy workload conditions. To evaluate fault resilience, a
+fog-node interruption is injected after 25%, 50%, and 75% of an
+aggregation epoch, representing early-, mid-, and late-stage aggregation
+failures. Each configuration is repeated 30 times using identical
+workload and failure traces to ensure a fair comparison.
 
-All variants use the same TEE-assisted ciphertext transformation,
-Paillier parameters, fog hardware, aggregation epoch, and sensor
-reports. The number of sensors is varied from 500 to 5000. The
-evaluation metrics are aggregation latency, aggregation processing
-overhead, and aggregation-loss exposure. The results are shown in
-Fig. [2](#fig:exp1_ablation){reference-type="ref"
+The evaluation metrics include end-to-end aggregation latency,
+aggregation CPU time, aggregation-loss exposure, recomputation overhead,
+and the number of reused completed micro-slot aggregates. The results
+are shown in Fig. [2](#fig:exp1_ablation){reference-type="ref"
 reference="fig:exp1_ablation"}.
 
 <figure id="fig:exp1_ablation" data-latex-placement="t">
 <span class="image placeholder"
 data-original-image-src="exp1_aggregation_ablation.pdf"
 data-original-image-title="" width="\columnwidth"></span>
-<figcaption>Aggregation performance of PLOSHA and its ablation variants
-under increasing numbers of sensors.</figcaption>
+<figcaption>Ablation results of the PLOSHA aggregation architecture
+under varying workload and failure conditions.</figcaption>
 </figure>
 
 As shown in Fig. [2](#fig:exp1_ablation){reference-type="ref"
-reference="fig:exp1_ablation"}, the aggregation latency of all variants
-increases with the number of sensors. Flat-Epoch exhibits the largest
-latency and loss exposure because all reports are processed within one
-aggregation unit. Fixed-Slot reduces the processing bottleneck, but its
-static granularity becomes inefficient when the workload changes.
-Adaptive-Slot provides better workload adaptation but incurs additional
-processing because intermediate aggregates are not hierarchically
-combined.
+reference="fig:exp1_ablation"}, aggregation latency increases with the
+number of sensors for all variants. Under stable conditions, Flat-Epoch
+incurs minimal slot-management overhead but suffers from the largest
+aggregation-loss exposure and recomputation cost when failures occur
+because the entire aggregation epoch must be reconstructed. Fixed-Slot
+confines recovery to smaller aggregation regions; however, its static
+granularity cannot adapt to changing workload and reliability
+conditions, resulting in either unnecessary slot-management overhead or
+insufficient fault isolation.
 
-Full PLOSHA achieves the best balance between latency and fault
-isolation. Its prediction-driven mechanism selects the micro-slot number
-according to the expected capacity, reliability, and failure exposure of
-each fog node, while hierarchical aggregation reuses completed
-micro-slot aggregates. Consequently, PLOSHA avoids both excessively
-coarse aggregation and unnecessary micro-slot processing. These results
-demonstrate that the performance gain is produced by the joint use of
-adaptive partitioning and hierarchical aggregation rather than by the
-TEE implementation alone.
+Adaptive-Slot dynamically adjusts the aggregation granularity according
+to the predicted processing capacity, reliability, and failure exposure,
+thereby achieving a better balance between aggregation overhead and
+fault isolation. Nevertheless, because completed micro-slot aggregates
+are not preserved, recovery still requires recomputation of the affected
+aggregation subtrees.
+
+Full PLOSHA combines adaptive partitioning with hierarchical
+aggregation, allowing previously completed micro-slot aggregates to be
+reused during recovery while recomputing only the affected aggregation
+regions. Consequently, Full PLOSHA achieves the lowest
+interruption-induced aggregation latency and recomputation overhead
+while maintaining low aggregation-loss exposure across all workload
+conditions.
+
+These results demonstrate that adaptive partitioning primarily optimizes
+the aggregation granularity according to predicted operating conditions,
+whereas hierarchical aggregation enables intermediate aggregate reuse
+and localized recomputation. Their combination therefore provides the
+best trade-off between aggregation efficiency and fault resilience,
+independent of the TEE-assisted cryptographic implementation.
 
 ### **Experiment 2: Scheduling Efficiency** {#experiment-2-scheduling-efficiency .unnumbered}
 
 This experiment evaluates scheduling efficiency under increasing
-fog-system scale. The number of fog nodes is varied from 5 to 50, while
-the sensor workload and node heterogeneity are maintained consistently
-across all schemes. PLOSHA-RMFR is compared with FedDQN [@22],
-fault-tolerant workflow scheduling [@37], and fault-tolerant serverless
-edge placement [@38].
+fog-system scale and dynamic operating conditions. PLOSHA-RMFR is
+compared with FedDQN [@ref22], fault-tolerant workflow
+scheduling [@ref37], and fault-tolerant serverless edge
+processing [@ref38]. The number of fog nodes is varied from 5 to 50
+under heterogeneous processing capacity, queue occupancy, and
+communication latency.
 
-The primary metric is the average scheduling latency required to select
-a fog node and assign an incoming aggregation workload. We additionally
-measure the resulting workload imbalance as
+Three workload conditions are considered: stable traffic, a 50%
+reporting-rate burst, and node degradation in which 20% of fog nodes
+experience increasing queue occupancy and latency. All schemes receive
+identical workload and node-state traces.
 
-$$\begin{equation}
+Scheduling latency is measured from receipt of a workload request and
+candidate-node states until a fog node is selected. Offline training,
+state collection, workload transmission, and execution are excluded.
+Each configuration is repeated 30 times, and the average and
+95th-percentile latencies are reported.
+
+Workload imbalance is measured as $$\begin{equation}
 I_W =
+\frac{
 \sqrt{
 \frac{1}{|\mathcal{F}|}
 \sum_{F_i\in\mathcal{F}}
 \left(W_i-\bar{W}\right)^2
+}
+}{
+\bar{W}+\epsilon
 },
-\end{equation}$$
-
-where $W_i$ denotes the workload of fog node $F_i$ and $\bar{W}$ is the
-average workload across all available fog nodes. The results are shown
+\end{equation}$$ where $W_i$ and $\bar{W}$ denote the workload of fog
+node $F_i$ and the average workload, respectively. The results are shown
 in Fig. [3](#fig:scheduling_efficiency){reference-type="ref"
 reference="fig:scheduling_efficiency"}.
 
@@ -2574,27 +2608,23 @@ reference="fig:scheduling_efficiency"}.
 data-original-image-src="exp2_scheduling_efficiency.pdf"
 data-original-image-title="" width="\columnwidth"></span>
 <figcaption>Scheduling latency and workload imbalance under increasing
-numbers of fog nodes.</figcaption>
+numbers of heterogeneous fog nodes.</figcaption>
 </figure>
 
 As shown in Fig. [3](#fig:scheduling_efficiency){reference-type="ref"
-reference="fig:scheduling_efficiency"}, scheduling latency increases for
-all schemes as the fog infrastructure grows. FedDQN incurs additional
-latency from DQN inference, clustering, and model synchronization.
-Ref. [@37] evaluates multiple workflow--resource combinations and
-therefore exhibits increasing optimization overhead as the number of
-candidate resources grows. Ref. [@38] incurs the highest scheduling cost
-because its MT-LSTM prediction and graph-based placement process
-repeatedly evaluates service-to-node mappings.
+reference="fig:scheduling_efficiency"}, scheduling latency increases
+with the number of candidate fog nodes for all schemes. The baseline
+methods incur increasing online inference or placement-search overhead
+as the scheduling space grows.
 
-In contrast, PLOSHA-RMFR performs lightweight EWMA prediction and
-evaluates each candidate fog node using its predicted capacity, risk,
-and reliability. It therefore avoids iterative learning and large
-combinatorial placement searches. Moreover, its predictive load-sharing
-mechanism transfers workloads before severe congestion occurs, resulting
-in lower workload imbalance than the baseline schemes. These results
-confirm that PLOSHA-RMFR provides scalable and responsive scheduling for
-heterogeneous IIoT fog environments.
+In contrast, PLOSHA-RMFR performs lightweight EWMA prediction and a
+single-pass evaluation of candidate nodes using predicted capacity,
+risk, and reliability. It therefore maintains lower scheduling latency,
+particularly under burst and degraded conditions. Its predictive
+load-sharing mechanism also avoids nodes approaching congestion,
+resulting in lower workload imbalance. These results demonstrate that
+PLOSHA-RMFR provides responsive and scalable scheduling under
+heterogeneous and dynamic IIoT fog conditions.
 
 ### **Experiment 3: Impact of Failure Rate** {#experiment-3-impact-of-failure-rate .unnumbered}
 

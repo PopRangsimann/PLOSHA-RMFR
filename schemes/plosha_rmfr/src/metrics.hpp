@@ -20,6 +20,8 @@ struct EpochMetrics {
     double scheduling_latency_ms = 0.0;
     double workload_imbalance = 0.0;
     double processing_overhead_ms = 0.0;
+    double energy_joules = 0.0;
+    double scheduling_comm_kb = 0.0;
 };
 
 // Averaged metrics written as one CSV row per sweep point
@@ -36,6 +38,9 @@ struct SweepPointResult {
     double avg_scheduling_latency = 0.0;
     double avg_workload_imbalance = 0.0;
     double avg_processing_overhead = 0.0;
+    double avg_energy_joules = 0.0;
+    double avg_scheduling_comm_kb = 0.0;
+    double convergence_time_epochs = 0.0;
 };
 
 class MetricsCollector {
@@ -60,13 +65,21 @@ public:
                                   const std::string& variable_name,
                                   const std::vector<SweepPointResult>& results);
 
+    // Get raw records for variance computation
+    const std::vector<EpochMetrics>& getRecords() const { return epoch_records_; }
+
     // Write ablation results (variant column format)
     struct AblationRow {
         std::string variant;
         double num_sensors;
         double aggregation_latency_ms;
+        double std_aggregation_latency;
         double processing_overhead_ms;
+        double std_processing_overhead;
         double loss_exposure_fraction;
+        double std_loss_exposure;
+        double energy_joules;
+        double std_energy_joules;
     };
     static void writeAblationResultsFile(const std::string& filepath,
                                           const std::vector<AblationRow>& rows);

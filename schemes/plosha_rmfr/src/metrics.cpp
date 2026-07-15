@@ -29,6 +29,8 @@ SweepPointResult MetricsCollector::computeAverages(double variable_value) const 
         result.avg_scheduling_latency += m.scheduling_latency_ms;
         result.avg_workload_imbalance += m.workload_imbalance;
         result.avg_processing_overhead += m.processing_overhead_ms;
+        result.avg_energy_joules += m.energy_joules;
+        result.avg_scheduling_comm_kb += m.scheduling_comm_kb;
     }
     result.avg_aggregation_latency /= n;
     result.avg_recovery_latency /= n;
@@ -41,6 +43,8 @@ SweepPointResult MetricsCollector::computeAverages(double variable_value) const 
     result.avg_scheduling_latency /= n;
     result.avg_workload_imbalance /= n;
     result.avg_processing_overhead /= n;
+    result.avg_energy_joules /= n;
+    result.avg_scheduling_comm_kb /= n;
     return result;
 }
 
@@ -59,6 +63,9 @@ void MetricsCollector::writeCSVHeader(std::ofstream& file,
          << ",system_availability"
          << ",queue_utilization"
          << ",recovery_frequency"
+         << ",energy_joules"
+         << ",scheduling_comm_kb"
+         << ",convergence_time_epochs"
          << "\n";
 }
 
@@ -74,6 +81,9 @@ void MetricsCollector::writeCSVRow(std::ofstream& file,
          << "," << r.avg_system_availability
          << "," << r.avg_queue_utilization
          << "," << r.avg_recovery_frequency
+         << "," << r.avg_energy_joules
+         << "," << r.avg_scheduling_comm_kb
+         << "," << r.convergence_time_epochs
          << "\n";
 }
 
@@ -109,13 +119,18 @@ void MetricsCollector::writeAblationResultsFile(const std::string& filepath,
         std::cerr << "[Metrics] ERROR: Cannot open " << filepath << "\n";
         return;
     }
-    file << "variant,num_sensors,aggregation_latency_ms,processing_overhead_ms,loss_exposure_fraction\n";
+    file << "variant,num_sensors,aggregation_latency_ms,std_aggregation_latency,processing_overhead_ms,std_processing_overhead,loss_exposure_fraction,std_loss_exposure,energy_joules,std_energy_joules\n";
     for (const auto& r : rows) {
         file << r.variant
              << "," << std::fixed << std::setprecision(6) << r.num_sensors
              << "," << r.aggregation_latency_ms
+             << "," << r.std_aggregation_latency
              << "," << r.processing_overhead_ms
+             << "," << r.std_processing_overhead
              << "," << r.loss_exposure_fraction
+             << "," << r.std_loss_exposure
+             << "," << r.energy_joules
+             << "," << r.std_energy_joules
              << "\n";
     }
     file.close();
@@ -137,12 +152,14 @@ void MetricsCollector::writeSchedulingResultsFile(const std::string& filepath,
         std::cerr << "[Metrics] ERROR: Cannot open " << filepath << "\n";
         return;
     }
-    file << variable_name << ",scheduling_latency_ms,workload_imbalance\n";
+    file << variable_name << ",scheduling_latency_ms,workload_imbalance,scheduling_comm_kb,convergence_time_epochs\n";
     for (const auto& r : results) {
         file << std::fixed << std::setprecision(6)
              << r.variable_value
              << "," << r.avg_scheduling_latency
              << "," << r.avg_workload_imbalance
+             << "," << r.avg_scheduling_comm_kb
+             << "," << r.convergence_time_epochs
              << "\n";
     }
     file.close();

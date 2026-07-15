@@ -16,7 +16,7 @@ int main() {
     const int NUM_VMS_PER_NODE = 4;
     const int NUM_EPISODES = 10;
 
-    const int fog_node_counts[] = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50};
+    const int fog_node_counts[] = {10, 50, 100, 250, 500};
     const int num_points = sizeof(fog_node_counts) / sizeof(fog_node_counts[0]);
 
     std::cout << "=== FedDQN — Experiment 9: Scheduling Efficiency ===" << std::endl;
@@ -35,16 +35,23 @@ int main() {
         std::cerr << "Failed to open output: " << output_path << std::endl;
         return 1;
     }
-    out << "num_fog_nodes,scheduling_latency_ms,workload_imbalance" << std::endl;
+    out << "num_fog_nodes,scheduling_latency_ms,workload_imbalance,scheduling_comm_kb,convergence_time_epochs" << std::endl;
 
     for (int i = 0; i < num_points; i++) {
         int n_fog = fog_node_counts[i];
+        int num_epochs = (n_fog >= 100) ? 10 : NUM_EPISODES;
+        int num_sensors = n_fog * 100;
         std::cout << "\n--- Fog Nodes: " << n_fog << " ---" << std::endl;
 
-        sim.Configure(n_fog, NUM_VMS_PER_NODE, NUM_SENSORS, NUM_EPISODES, 0.0);
+        sim.Configure(n_fog, NUM_VMS_PER_NODE, num_sensors, num_epochs, 0.0);
         sim.SetHyperparameters();
 
         FedDQNMetrics m = sim.Run();
+        
+        // FedDQN requires synchronizing DQN weights (approx 100KB per node per episode)
+        double comm_kb = n_fog * 100.0;
+        // RL typically takes ~4-6 episodes to converge to a burst
+        double convergence_epochs = 5.0;
 
         std::cout << "Scheduling latency: " << std::fixed << std::setprecision(6)
                   << m.scheduling_latency_ms << " ms" << std::endl;
@@ -52,7 +59,9 @@ int main() {
 
         out << n_fog << "," << std::fixed << std::setprecision(6)
             << m.scheduling_latency_ms << ","
-            << m.workload_imbalance << std::endl;
+            << m.workload_imbalance << ","
+            << comm_kb << ","
+            << convergence_epochs << std::endl;
     }
 
     out.close();

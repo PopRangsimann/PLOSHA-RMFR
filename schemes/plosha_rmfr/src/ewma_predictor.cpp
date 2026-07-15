@@ -5,12 +5,12 @@ namespace plosha {
 
 // Phase II Step 2: EWMA prediction
 // Ŝ_i(t+1) = α · S_i(t) + (1 − α) · Ŝ_i(t)
-FogState EWMAPredictor::predictState(const FogState& current, const FogState& previous) {
+FogState EWMAPredictor::predictState(const FogState& current, const FogState& prev_ewma) {
     FogState predicted;
-    predicted.workload   = ALPHA_EWMA * current.workload   + (1.0 - ALPHA_EWMA) * previous.workload;
-    predicted.queue_load = ALPHA_EWMA * current.queue_load + (1.0 - ALPHA_EWMA) * previous.queue_load;
-    predicted.latency    = ALPHA_EWMA * current.latency    + (1.0 - ALPHA_EWMA) * previous.latency;
-    predicted.reliability = ALPHA_EWMA * current.reliability + (1.0 - ALPHA_EWMA) * previous.reliability;
+    predicted.workload   = ALPHA_EWMA * current.workload   + (1.0 - ALPHA_EWMA) * prev_ewma.workload;
+    predicted.queue_load = ALPHA_EWMA * current.queue_load + (1.0 - ALPHA_EWMA) * prev_ewma.queue_load;
+    predicted.latency    = ALPHA_EWMA * current.latency    + (1.0 - ALPHA_EWMA) * prev_ewma.latency;
+    predicted.reliability = ALPHA_EWMA * current.reliability + (1.0 - ALPHA_EWMA) * prev_ewma.reliability;
     return predicted;
 }
 
@@ -41,9 +41,9 @@ NodeStatus EWMAPredictor::classifyStatus(double risk, double tau_r) {
 }
 
 // Full prediction pipeline
-PredictionVector EWMAPredictor::predict(const FogState& current, const FogState& previous,
+PredictionVector EWMAPredictor::predict(const FogState& current, const FogState& prev_ewma,
                                         double tau_r) {
-    FogState predicted = predictState(current, previous);
+    FogState predicted = predictState(current, prev_ewma);
     PredictionVector pv;
     pv.capacity = computeCapacity(predicted);
     pv.failure_exposure = computeFailureExposure(predicted);

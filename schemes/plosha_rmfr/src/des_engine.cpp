@@ -50,7 +50,7 @@ EpochMetrics DESEngine::runEpoch(
     const ExperimentConfig &config, std::vector<Sensor> &sensors,
     std::vector<FogNode> &fog_nodes, const std::vector<uint8_t> &fog_aes_key,
     const std::vector<std::vector<SensorReading>> &epoch_data, int epoch_index,
-    std::vector<FogState> &prev_states,
+    std::vector<FogState> &ewma_states,
     std::vector<FeedbackState> &feedback_states, std::mt19937 &rng) {
   EpochMetrics metrics;
   int num_fog = config.num_fog_nodes;
@@ -63,8 +63,10 @@ EpochMetrics DESEngine::runEpoch(
   // Inject failures FIRST so readings to failed nodes are dropped,
   // causing incomplete data that triggers RMFR recovery.
   if (config.failure_rate > 0.0) {
+    std::weibull_distribution<double> weibull(1.5, config.failure_rate);
+    double current_fail_rate = std::min(1.0, weibull(rng));
     int num_failures =
-        static_cast<int>(std::ceil(config.failure_rate * num_fog));
+        static_cast<int>(std::ceil(current_fail_rate * num_fog));
     num_failures = std::min(num_failures, num_fog - 1); // Keep at least 1 alive
 
     // Reset all to non-failed first
@@ -117,7 +119,10 @@ EpochMetrics DESEngine::runEpoch(
 
   for (int f = 0; f < num_fog; ++f) {
     current_states[f] = fog_nodes[f].getState();
-    predictions[f] = ewma_.predict(current_states[f], prev_states[f],
+    if (epoch_index == 0) {
+      ewma_states[f] = current_states[f];
+    }
+    predictions[f] = ewma_.predict(current_states[f], ewma_states[f],
                                    feedback_states[f].thresholds.tau_r);
   }
 
@@ -293,6 +298,14 @@ EpochMetrics DESEngine::runEpoch(
   metrics.loss_exposure_fraction /= active_fogs;
   metrics.communication_overhead_KB = total_comm_overhead;
   metrics.processing_overhead_ms = total_processing_overhead / active_fogs;
+  
+  // Analytical Energy Model: energy = execution_time (s) * power_watts
+  // Assume each fog node has a base power of 150W
+  double FOG_POWER_WATTS = 150.0;
+  metrics.energy_joules = (metrics.processing_overhead_ms / 1000.0) * FOG_POWER_WATTS;
+
+  metrics.workload_imbalance = 0.0; // Handled below
+  
   // System availability: non-failed nodes count as fully available.
   // Failed nodes recovered via RMFR may be partially degraded if
   // static thresholds selected a suboptimal recovery mode.
@@ -323,8 +336,12 @@ EpochMetrics DESEngine::runEpoch(
   }
   metrics.workload_imbalance = std::sqrt(var_sum / config.num_fog_nodes);
 
-  // Update previous states for next epoch
-  prev_states = current_states;
+  // Update EWMA states for next epoch
+  for (int f = 0; f < config.num_fog_nodes; ++f) {
+    if (!fog_nodes[f].isFailed()) {
+      ewma_states[f] = ewma_.predictState(current_states[f], ewma_states[f]);
+    }
+  }
 
   return metrics;
 }
@@ -369,7 +386,7 @@ std::vector<SweepPointResult> DESEngine::runSweep(const SweepConfig &sweep,
         dataset_.groupByEpoch(config.num_sensors, config.workload_multiplier);
 
     // Initialize state vectors
-    std::vector<FogState> prev_states(config.num_fog_nodes);
+    std::vector<FogState> ewma_states(config.num_fog_nodes);
     std::vector<FeedbackState> feedback_states(config.num_fog_nodes);
     std::mt19937 rng(42); // Fixed seed for reproducibility
 
@@ -377,7 +394,7 @@ std::vector<SweepPointResult> DESEngine::runSweep(const SweepConfig &sweep,
     for (int e = 0; e < config.num_epochs; ++e) {
       auto epoch_metrics =
           runEpoch(config, sensors, fog_nodes, fog_aes_key, epoch_data, e,
-                   prev_states, feedback_states, rng);
+                   ewma_states, feedback_states, rng);
       metrics_.recordEpoch(epoch_metrics);
     }
 
@@ -546,7 +563,7 @@ void DESEngine::runExp7_AFLTOAblation(const ExperimentConfig &config) {
                   exp_config.num_fog_nodes);
 
     // Initialize state vectors
-    std::vector<FogState> prev_states(exp_config.num_fog_nodes);
+    std::vector<FogState> ewma_states(exp_config.num_fog_nodes);
     std::vector<FeedbackState> feedback_states(exp_config.num_fog_nodes);
     std::mt19937 rng(42);
 
@@ -561,7 +578,7 @@ void DESEngine::runExp7_AFLTOAblation(const ExperimentConfig &config) {
 
       auto epoch_metrics =
           runEpoch(exp_config, sensors, fog_nodes, fog_aes_key, epoch_data, e,
-                   prev_states, feedback_states, rng);
+                   ewma_states, feedback_states, rng);
       metrics_.recordEpoch(epoch_metrics);
     }
 
@@ -736,7 +753,7 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
       dataset_.load(exp_config.dataset_path, exp_config.num_sensors, exp_config.num_fog_nodes);
       auto epoch_data = dataset_.groupByEpoch(exp_config.num_sensors, exp_config.workload_multiplier);
 
-      std::vector<FogState> prev_states(exp_config.num_fog_nodes);
+      std::vector<FogState> ewma_states(exp_config.num_fog_nodes);
       std::vector<FeedbackState> feedback_states(exp_config.num_fog_nodes);
       std::mt19937 rng(42);
 
@@ -744,7 +761,7 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
       for (int e = 0; e < exp_config.num_epochs; ++e) {
         auto epoch_start = std::chrono::high_resolution_clock::now();
         auto epoch_metrics = runEpoch(exp_config, sensors, fog_nodes, fog_aes_key,
-                                       epoch_data, e, prev_states, feedback_states, rng);
+                                       epoch_data, e, ewma_states, feedback_states, rng);
         metrics_.recordEpoch(epoch_metrics);
         auto epoch_end = std::chrono::high_resolution_clock::now();
         double epoch_wall_ms = std::chrono::duration<double, std::milli>(epoch_end - epoch_start).count();
@@ -764,6 +781,28 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
       row.aggregation_latency_ms = avg.avg_aggregation_latency;
       row.processing_overhead_ms = avg.avg_processing_overhead;
       row.loss_exposure_fraction = avg.avg_loss_exposure;
+      row.energy_joules = avg.avg_energy_joules;
+      
+      double var_lat = 0.0, var_overhead = 0.0, var_loss = 0.0, var_energy = 0.0;
+      const auto& records = metrics_.getRecords();
+      if (!records.empty()) {
+          for (const auto& m : records) {
+              var_lat += std::pow(m.aggregation_latency_ms - avg.avg_aggregation_latency, 2);
+              var_overhead += std::pow(m.processing_overhead_ms - avg.avg_processing_overhead, 2);
+              var_loss += std::pow(m.loss_exposure_fraction - avg.avg_loss_exposure, 2);
+              var_energy += std::pow(m.energy_joules - avg.avg_energy_joules, 2);
+          }
+          row.std_aggregation_latency = std::sqrt(var_lat / records.size());
+          row.std_processing_overhead = std::sqrt(var_overhead / records.size());
+          row.std_loss_exposure = std::sqrt(var_loss / records.size());
+          row.std_energy_joules = std::sqrt(var_energy / records.size());
+      } else {
+          row.std_aggregation_latency = 0.0;
+          row.std_processing_overhead = 0.0;
+          row.std_loss_exposure = 0.0;
+          row.std_energy_joules = 0.0;
+      }
+      
       all_rows.push_back(row);
     }
   }
@@ -776,19 +815,58 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
 // ---------------------------------------------------------------------------
 void DESEngine::runExp9_SchedulingEfficiency(const ExperimentConfig &config) {
   std::cout << "\n=== Experiment 9: Scheduling Efficiency ===\n";
-  SweepConfig sweep;
-  sweep.variable_name = "num_fog_nodes";
-  sweep.sweep_values = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50};
-  sweep.output_dir = config.output_dir + "/exp2_scheduling_efficiency";
-
-  ExperimentConfig exp_config = config;
-  exp_config.num_sensors = 12600; // LCM of {5,10,15,20,25,30,35,40,45,50}
-  exp_config.failure_rate = 0.0;
-  exp_config.num_epochs = DEFAULT_NUM_EPOCHS;
-
-  auto results = runSweep(sweep, exp_config);
-  MetricsCollector::writeSchedulingResultsFile(sweep.output_dir + "/results.csv",
-                                                sweep.variable_name, results);
+  std::vector<double> fog_sweep = {10, 50, 100, 250, 500};
+  std::string output_dir = config.output_dir + "/exp2_scheduling_efficiency";
+  
+  std::vector<SweepPointResult> results;
+  
+  for (double num_fog_nodes : fog_sweep) {
+      std::cout << "  [Sweep] num_fog_nodes = " << num_fog_nodes << "...\n";
+      metrics_.reset();
+      ExperimentConfig exp_config = config;
+      exp_config.num_fog_nodes = static_cast<int>(num_fog_nodes);
+      exp_config.num_sensors = exp_config.num_fog_nodes * 100;
+      exp_config.failure_rate = 0.0;
+      exp_config.num_epochs = (num_fog_nodes >= 100) ? 10 : DEFAULT_NUM_EPOCHS;
+      
+      std::vector<Sensor> sensors;
+      std::vector<FogNode> fog_nodes;
+      std::vector<uint8_t> fog_aes_key;
+      initializeSystem(exp_config, sensors, fog_nodes, fog_aes_key);
+      dataset_.load(exp_config.dataset_path, exp_config.num_sensors, exp_config.num_fog_nodes);
+      
+      std::vector<FogState> ewma_states(exp_config.num_fog_nodes);
+      std::vector<FeedbackState> feedback_states(exp_config.num_fog_nodes);
+      std::mt19937 rng(42);
+      
+      int convergence_epoch = -1;
+      
+      for (int e = 0; e < exp_config.num_epochs; ++e) {
+          double burst_multiplier = exp_config.workload_multiplier;
+          if (e >= 5) {
+              burst_multiplier *= 1.5; // 50% burst
+          }
+          auto epoch_data = dataset_.groupByEpoch(exp_config.num_sensors, burst_multiplier);
+          
+          auto epoch_metrics = runEpoch(exp_config, sensors, fog_nodes, fog_aes_key,
+                                         epoch_data, e, ewma_states, feedback_states, rng);
+          
+          epoch_metrics.scheduling_comm_kb = (exp_config.num_fog_nodes * 32.0) / 1024.0;
+          metrics_.recordEpoch(epoch_metrics);
+          
+          if (e >= 5 && convergence_epoch == -1 && epoch_metrics.workload_imbalance < 0.1) {
+              convergence_epoch = e - 5;
+          }
+      }
+      
+      auto avg = metrics_.computeAverages(num_fog_nodes);
+      if (convergence_epoch == -1) convergence_epoch = exp_config.num_epochs - 5;
+      avg.convergence_time_epochs = convergence_epoch;
+      results.push_back(avg);
+  }
+  
+  MetricsCollector::writeSchedulingResultsFile(output_dir + "/results.csv",
+                                                "num_fog_nodes", results);
 }
 
 } // namespace plosha

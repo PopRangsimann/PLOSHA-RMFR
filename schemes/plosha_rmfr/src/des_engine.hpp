@@ -50,7 +50,7 @@ private:
                           const std::vector<uint8_t>& fog_aes_key,
                           const std::vector<std::vector<SensorReading>>& epoch_data,
                           int epoch_index,
-                          std::vector<FogState>& prev_states,
+                          std::vector<FogState>& ewma_states,
                           std::vector<FeedbackState>& feedback_states,
                           std::mt19937& rng);
 
