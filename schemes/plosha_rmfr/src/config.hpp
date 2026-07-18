@@ -92,10 +92,10 @@ constexpr double OMEGA_SCORE_2     = 0.5;  // Reliability score weight ω₂
 // ---------------------------------------------------------------------------
 constexpr int    DEFAULT_NUM_SENSORS    = 1000;
 constexpr int    DEFAULT_NUM_FOG_NODES  = 10;
-constexpr int    DEFAULT_NUM_EPOCHS     = 10;
+constexpr int    DEFAULT_NUM_EPOCHS     = 30;
 constexpr double DEFAULT_FAILURE_RATE   = 0.05;  // 5%
 constexpr int    DEFAULT_WORKLOAD_MULT  = 1;
-constexpr int    ABLATION_EPOCHS        = 10;   // Standardized: all experiments use 10 epochs
+constexpr int    ABLATION_EPOCHS        = 30;   // Standardized: all experiments use 30 epochs
 
 // ---------------------------------------------------------------------------
 // Experiment Configuration
@@ -108,10 +108,12 @@ struct ExperimentConfig {
     double failure_rate     = DEFAULT_FAILURE_RATE;
     int workload_multiplier = DEFAULT_WORKLOAD_MULT;
     int forced_micro_slots  = 0;      // 0 = use optimizer; >0 = force m*
+    double failure_injection_time = 0.0; // 0.0 = random time; >0.0 = specific fraction (e.g. 0.25)
     bool aflto_enabled      = true;
     bool hierarchical_aggregation = true; // false = skip fog-level hierarchy
     std::string output_dir  = ".";
     std::string dataset_path = "../../dataset/plosha_dataset.csv";
+    bool skip_native_exp8   = false;
 };
 
 } // namespace plosha

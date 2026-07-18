@@ -14,9 +14,11 @@ DATASET_PATH="$ROOT_DIR/dataset/plosha_dataset.csv"
 echo "[1/5] Running PLOSHA-RMFR (Ours) — Native mode..."
 cd "$ROOT_DIR/schemes/plosha_rmfr/src"
 make clean && make
-echo "  -> Executing natively (all experiments)..."
-./plosha_rmfr --experiment all --epochs 10 --dataset "$DATASET_PATH" --output "$ROOT_DIR/schemes/plosha_rmfr"
-echo "✔ PLOSHA-RMFR (native) completed."
+if [ ! -d "$ROOT_DIR/schemes/plosha_rmfr" ]; then
+  mkdir -p "$ROOT_DIR/schemes/plosha_rmfr"
+fi
+./plosha_rmfr --experiment all --skip-native-exp8 --epochs 30 --dataset "$DATASET_PATH" --output "$ROOT_DIR/schemes/plosha_rmfr"
+echo "✔ PLOSHA-RMFR (Native) completed."
 echo ""
 
 # ---------------------------------------------------------
@@ -53,7 +55,7 @@ mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp3_workload_intensity"
 mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp4_loss_exposure"
 mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp5_recovery_comm"
 mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp6_aflto_ablation"
-gramine-sgx plosha_rmfr --experiment all --epochs 10 --dataset /dataset/plosha_dataset.csv --output /output
+gramine-sgx plosha_rmfr --experiment all --epochs 30 --dataset /dataset/plosha_dataset.csv --output /output
 echo "✔ PLOSHA-RMFR (SGX) completed."
 echo ""
 
@@ -75,11 +77,14 @@ echo "[3/5] Running Robust IIoT (Ref[24])..."
 cd "$ROOT_DIR/schemes/robust_iiot/src"
 make clean && make
 echo "  -> Running Exp 1 (Sensor Scalability)..."
+mkdir -p ../exp1_sensor_scalability
 ./exp1_sensor_scalability
 echo "  -> Running Exp 3 (Workload Intensity)..."
+mkdir -p ../exp3_workload_intensity
 ./exp3_workload_intensity
 echo "  -> Running Exp 4 (Loss Exposure)..."
-./exp4_loss_exposure
+mkdir -p ../exp5_loss_exposure
+./exp5_loss_exposure
 echo "✔ Robust IIoT completed."
 echo ""
 
@@ -90,15 +95,20 @@ echo "[4/5] Running FedDQN (Ref[22])..."
 cd "$ROOT_DIR/schemes/fed_dqn/src"
 make clean && make
 echo "  -> Running Exp 1 (Sensor Scalability)..."
+mkdir -p ../exp1_sensor_scalability
 ./exp1_sensor_scalability
 echo "  -> Running Exp 2 (Fog Scalability)..."
+mkdir -p ../exp2_fog_scalability
 ./exp2_fog_scalability
 echo "  -> Running Exp 3 (Workload Intensity)..."
+mkdir -p ../exp3_workload_intensity
 ./exp3_workload_intensity
 echo "  -> Running Exp 3 (Failure Rate)..."
-./exp3_failure_rate
+mkdir -p ../exp3_failure_rate
+./exp4_failure_rate
 echo "  -> Running Exp 2 (Scheduling Efficiency)..."
-./exp2_scheduling_efficiency
+mkdir -p ../exp2_scheduling_efficiency
+./exp9_scheduling_efficiency
 echo "✔ FedDQN completed."
 echo ""
 

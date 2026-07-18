@@ -259,7 +259,7 @@ def plot_exp6_aflto_ablation():
 
 
 def plot_exp1_ablation_aggregation():
-    """Generate a grouped bar chart for the PLOSHA aggregation ablation study.
+    """Generate a line plot for the PLOSHA aggregation ablation study.
 
     Compares Flat-Epoch, Fixed-Slot, Adaptive-Slot, and Full PLOSHA
     across aggregation latency.
@@ -275,41 +275,40 @@ def plot_exp1_ablation_aggregation():
         print(f"Error reading {csv_path}: {e}")
         return
 
-    # Ablation variant definitions (ordered so Full PLOSHA is last / visually prominent)
+    # Ablation variant definitions
     VARIANTS = {
-        'flat_epoch':    {'label': 'Flat-Epoch',    'color': '#d62728', 'marker': 'X'},
-        'fixed_slot':    {'label': 'Fixed-Slot',    'color': '#ff7f0e', 'marker': 's'},
-        'adaptive_slot': {'label': 'Adaptive-Slot', 'color': '#2ca02c', 'marker': '^'},
-        'full_plosha':   {'label': 'Full PLOSHA',   'color': '#1f77b4', 'marker': 'o'},
+        'flat_epoch':    {'label': 'Flat-Epoch',    'color': '#d62728', 'marker': 'X', 'linestyle': ':'},
+        'fixed_slot':    {'label': 'Fixed-Slot',    'color': '#ff7f0e', 'marker': 's', 'linestyle': '--'},
+        'adaptive_slot': {'label': 'Adaptive-Slot', 'color': '#2ca02c', 'marker': '^', 'linestyle': '-.'},
+        'full_plosha':   {'label': 'Full PLOSHA',   'color': '#1f77b4', 'marker': 'o', 'linestyle': '-'},
     }
 
     import numpy as np
 
     fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
 
-    bar_sensors = [1000, 2000, 3000, 4000, 5000]
-    variant_ids = list(VARIANTS.keys())
-    n_variants = len(variant_ids)
-    bar_width = 0.18
-    x_positions = np.arange(len(bar_sensors))
-
+    # Use unique sorted sensor values from the dataset
+    x_sensors = sorted(df['num_sensors'].unique())
     y_col = 'aggregation_latency_ms'
     y_label = 'Aggregation Latency (ms)'
 
-    for i, variant_id in enumerate(variant_ids):
-        info = VARIANTS[variant_id]
-        sub = df[df['variant'] == variant_id]
-        vals = []
-        for s in bar_sensors:
-            row = sub[sub['num_sensors'] == s]
-            vals.append(row.iloc[0][y_col] if not row.empty else 0)
-        offset = (i - (n_variants - 1) / 2) * bar_width
-        ax.bar(x_positions + offset, vals, bar_width,
-               label=info['label'], color=info['color'], zorder=3)
-    ax.set_xticks(x_positions)
-    ax.set_xticklabels([str(s) for s in bar_sensors])
+    # Plot each variant as a line
+    for variant_id, info in VARIANTS.items():
+        sub = df[df['variant'] == variant_id].sort_values('num_sensors')
+        if sub.empty:
+            continue
+        ax.plot(sub['num_sensors'], sub[y_col],
+                label=info['label'], color=info['color'], 
+                marker=info['marker'], linestyle=info['linestyle'],
+                markersize=8, linewidth=2.5, zorder=3)
+
+    ax.set_xticks(x_sensors)
     ax.set_xlabel('Number of Sensors')
     ax.set_ylabel(y_label)
+    
+    # Do not force bottom to 0 to ensure the chart is "zoomed in" enough to distinguish schemes
+    ax.margins(x=0.05, y=0.1) 
+    
     ax.legend(loc='upper left', frameon=True)
     setup_axes(ax)
     fig.tight_layout()
@@ -337,7 +336,13 @@ def plot_exp2_scheduling_efficiency():
     # Load data for each scheme
     data = {}
     for scheme_id, info in exp2_schemes.items():
-        csv_path = BASE_DIR / scheme_id / 'exp2_scheduling_efficiency' / 'results.csv'
+        if scheme_id == 'plosha_rmfr':
+            native_path = BASE_DIR / 'plosha_rmfr' / 'exp2_scheduling_efficiency_native' / 'results.csv'
+            sgx_path = BASE_DIR / 'plosha_rmfr' / 'exp2_scheduling_efficiency' / 'results.csv'
+            csv_path = native_path if native_path.exists() else sgx_path
+        else:
+            csv_path = BASE_DIR / scheme_id / 'exp2_scheduling_efficiency' / 'results.csv'
+
         if csv_path.exists():
             try:
                 df = pd.read_csv(csv_path)
@@ -368,7 +373,8 @@ def plot_exp2_scheduling_efficiency():
         ax.plot(df['num_fog_nodes'], df[y_col],
                 label=info['label'], color=info['color'],
                 marker=info['marker'], linewidth=2.5, markersize=8,
-                zorder=5 if scheme_id == 'plosha_rmfr' else 3)
+                linestyle=info.get('linestyle', '-'),
+                zorder=5 if 'plosha' in scheme_id else 3)
     ax.set_xlabel('Number of Fog Nodes')
     ax.set_ylabel(y_label)
     ax.set_yscale('log')

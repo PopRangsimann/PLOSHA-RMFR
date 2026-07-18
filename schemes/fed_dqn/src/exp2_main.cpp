@@ -13,7 +13,7 @@ int main() {
     const std::string output_path = "../exp2_fog_scalability/results.csv";
     const int NUM_SENSORS = 2000;
     const int NUM_VMS_PER_NODE = 4;
-    const int NUM_EPISODES = 10;
+    const int NUM_EPISODES = 30;
 
     const int fog_node_counts[] = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50};
     const int num_points = sizeof(fog_node_counts) / sizeof(fog_node_counts[0]);
@@ -37,17 +37,26 @@ int main() {
         int n_fog = fog_node_counts[i];
         std::cout << "\n--- Fog Nodes: " << n_fog << " ---" << std::endl;
 
-        sim.Configure(n_fog, NUM_VMS_PER_NODE, NUM_SENSORS, NUM_EPISODES, 0.0);
-        sim.SetHyperparameters();
+        double total_lat = 0;
+        double total_makespan = 0;
+        
+        for (int iter = 0; iter < 30; iter++) {
+            sim.Configure(n_fog, NUM_VMS_PER_NODE, NUM_SENSORS, NUM_EPISODES, 0.0);
+            sim.SetHyperparameters();
+            FedDQNMetrics m = sim.Run();
+            total_lat += m.aggregation_latency_ms;
+            total_makespan += m.makespan_ms;
+        }
+        
+        double avg_lat = total_lat / 30.0;
+        double avg_makespan = total_makespan / 30.0;
 
-        FedDQNMetrics m = sim.Run();
-
-        std::cout << "Aggregation latency: " << std::fixed << std::setprecision(2)
-                  << m.aggregation_latency_ms << " ms" << std::endl;
-        std::cout << "Makespan: " << m.makespan_ms << " ms" << std::endl;
+        std::cout << "Average Aggregation latency: " << std::fixed << std::setprecision(2)
+                  << avg_lat << " ms" << std::endl;
+        std::cout << "Average Makespan: " << avg_makespan << " ms" << std::endl;
 
         out << n_fog << "," << std::fixed << std::setprecision(4)
-            << m.aggregation_latency_ms << ",," << std::endl;
+            << avg_lat << ",," << std::endl;
     }
 
     out.close();

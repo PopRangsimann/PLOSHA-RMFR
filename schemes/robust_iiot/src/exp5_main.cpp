@@ -50,23 +50,34 @@ int main() {
 
     for (int i = 0; i < num_points; i++) {
         int m_slots = micro_slot_counts[i];
+        
+        sim.Initialize(NUM_SENSORS, NUM_EDGE_SERVERS, PAILLIER_BITS, DP_EPSILON);
+        sim.RunRegistration();
 
-        // Measure real crypto overhead for this configuration
-        // (to ensure timing is authentic, run actual aggregation)
-        auto t_start = std::chrono::high_resolution_clock::now();
+        const int NUM_EPISODES = 30;
+        double total_loss_accum = 0.0;
+        double total_ms_accum = 0.0;
 
-        double loss_fraction = sim.RunLossExposure(m_slots, FAILED_SLOTS);
+        for (int e = 0; e < NUM_EPISODES; ++e) {
+            auto t_start = std::chrono::high_resolution_clock::now();
+            double loss_fraction = sim.RunLossExposure(m_slots, FAILED_SLOTS);
+            auto t_end = std::chrono::high_resolution_clock::now();
+            double elapsed_ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+            
+            total_loss_accum += loss_fraction;
+            total_ms_accum += elapsed_ms;
+        }
 
-        auto t_end = std::chrono::high_resolution_clock::now();
-        double elapsed_ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+        double avg_loss = total_loss_accum / NUM_EPISODES;
+        double avg_ms = total_ms_accum / NUM_EPISODES;
 
         std::cout << "Micro-slots: " << m_slots
-                  << " | Loss fraction: " << std::fixed << std::setprecision(4) << loss_fraction
-                  << " | Time: " << elapsed_ms << " ms" << std::endl;
+                  << " | Loss fraction (avg): " << std::fixed << std::setprecision(4) << avg_loss
+                  << " | Time (avg): " << avg_ms << " ms" << std::endl;
 
         // Output: variable = micro_slots, primary = loss_exposure_fraction
         out << m_slots << "," << std::fixed << std::setprecision(6)
-            << loss_fraction << ",," << std::endl;
+            << avg_loss << ",," << std::endl;
     }
 
     out.close();

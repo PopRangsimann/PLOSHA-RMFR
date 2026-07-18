@@ -48,6 +48,8 @@ int main(int argc, char* argv[]) {
             config.dataset_path = argv[++i];
         } else if (arg == "--output" && i + 1 < argc) {
             config.output_dir = argv[++i];
+        } else if (arg == "--skip-native-exp8") {
+            config.skip_native_exp8 = true;
         } else {
             std::cerr << "Unknown argument: " << arg << "\n";
             printUsage(argv[0]);

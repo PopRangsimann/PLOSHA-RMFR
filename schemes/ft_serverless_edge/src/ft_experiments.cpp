@@ -342,48 +342,69 @@ SimResult FTServerlessEdgeSim::runExp9_SchedulingEfficiency() {
   buildSECNetwork(n_cl);
   initCrypto();
 
-  std::vector<DSPRequest> reqs;
-  for (int i = 0; i < n_sensors; i++) {
-    auto &row = dataset_[i % dataset_.size()];
-    reqs.push_back(createRequest(i, i % 100, i % n_cl, row.bytes_transferred,
-                                 row.packet_size, row.is_failure));
+  double overall_sched_ms = 0.0;
+  double overall_imbalance = 0.0;
+  int num_epochs = 30;
+
+  for (int iter = 0; iter < 30; ++iter) {
+      rng_.seed(cfg_.seed + iter);
+      buildSECNetwork(n_cl);
+      
+      double total_sched_ms_accum = 0.0;
+      double total_imbalance_accum = 0.0;
+      
+      for (int e = 0; e < num_epochs; ++e) {
+          double multiplier = (e >= 12) ? 1.5 : 1.0;
+          int current_sensors = n_sensors * multiplier;
+          std::vector<DSPRequest> reqs;
+          for (int i = 0; i < current_sensors; i++) {
+            auto &row = dataset_[i % dataset_.size()];
+            reqs.push_back(createRequest(i, i % 100, i % n_cl, row.bytes_transferred,
+                                         row.packet_size, row.is_failure));
+          }
+          
+          std::fill(cloudlet_load_.begin(), cloudlet_load_.end(), 0);
+          computeCloudletLoad(reqs, n_cl, cloudlet_load_);
+
+          // Node degradation
+          if (e >= 21) {
+              int num_degraded = std::max(1, static_cast<int>(n_cl * 0.20));
+              for (int c = 0; c < num_degraded; ++c) {
+                  cloudlets_[c].memory_capacity_mb /= 2.0; // Artificial degradation
+              }
+          }
+
+          auto sched_start = std::chrono::high_resolution_clock::now();
+          for (auto &req : reqs) {
+            algorithmFwk(req);
+          }
+          auto sched_end = std::chrono::high_resolution_clock::now();
+          
+          // Restore capacity
+          if (e >= 21) {
+              int num_degraded = std::max(1, static_cast<int>(n_cl * 0.20));
+              for (int c = 0; c < num_degraded; ++c) {
+                  cloudlets_[c].memory_capacity_mb *= 2.0;
+              }
+          }
+
+          double sched_ms = std::chrono::duration<double, std::milli>(sched_end - sched_start).count();
+          total_sched_ms_accum += (sched_ms / std::max(1, (int)reqs.size()));
+
+          int total_load = 0;
+          for (int c = 0; c < n_cl; c++) total_load += cloudlet_load_[c];
+          double w_bar = 1.0 / n_cl;
+          double var_sum = 0.0;
+          for (int c = 0; c < n_cl; c++) {
+            double w_i = (total_load > 0) ? static_cast<double>(cloudlet_load_[c]) / total_load : 0.0;
+            double diff = w_i - w_bar;
+            var_sum += diff * diff;
+          }
+          total_imbalance_accum += std::sqrt(var_sum / n_cl);
+      }
+      overall_sched_ms += total_sched_ms_accum / num_epochs;
+      overall_imbalance += total_imbalance_accum / num_epochs;
   }
-  computeCloudletLoad(reqs, n_cl, cloudlet_load_);
 
-  // Measure scheduling/placement latency
-  auto sched_start = std::chrono::high_resolution_clock::now();
-
-  for (auto &req : reqs) {
-    algorithmFwk(req);
-  }
-
-  auto sched_end = std::chrono::high_resolution_clock::now();
-  double total_sched_ms =
-      std::chrono::duration<double, std::milli>(sched_end - sched_start)
-          .count();
-  double avg_sched_ms = total_sched_ms / std::max(1, (int)reqs.size());
-
-  // Compute workload imbalance across cloudlets
-  // W_i = load_i / total_load (normalized)
-  int total_load = 0;
-  for (int c = 0; c < n_cl; c++) {
-    total_load += cloudlet_load_[c];
-  }
-  double w_bar = (total_load > 0)
-                     ? static_cast<double>(total_load) / n_cl / total_load
-                     : 0.0;
-  // Actually: W_i = load_i / total_load, W_bar = 1/n_cl
-  w_bar = 1.0 / n_cl;
-  double var_sum = 0.0;
-  for (int c = 0; c < n_cl; c++) {
-    double w_i = (total_load > 0)
-                     ? static_cast<double>(cloudlet_load_[c]) / total_load
-                     : 0.0;
-    double diff = w_i - w_bar;
-    var_sum += diff * diff;
-  }
-  double imbalance = std::sqrt(var_sum / n_cl);
-
-  // primary_metric = scheduling_latency_ms, secondary_1 = workload_imbalance
-  return {cfg_.variable_value, avg_sched_ms, imbalance, 0};
+  return {cfg_.variable_value, overall_sched_ms / 30.0, overall_imbalance / 30.0, 0};
 }

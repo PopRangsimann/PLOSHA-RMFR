@@ -621,16 +621,22 @@ FedDQNMetrics FedDQNSimulation::Run() {
 
     int scheduling_step = 0;
 
-    for (auto &task : tasks_) {
+    int tasks_to_process = tasks_.size();
+    if (episode >= 12) {
+      tasks_to_process = static_cast<int>(tasks_.size() * 1.5); // 50% burst
+    }
+
+    for (int t_idx = 0; t_idx < tasks_to_process; ++t_idx) {
+      Task task = tasks_[t_idx % tasks_.size()];
       task.rejected = false;
       task.sla_violated = false;
 
       // Select fog node (hotspot assignment: 25% to Node 0, rest evenly)
       int node_idx;
-      if (task.id < tasks_.size() * 0.25) {
+      if (t_idx < tasks_to_process * 0.25) {
           node_idx = 0;
       } else {
-          node_idx = 1 + (task.id % std::max(1, num_fog_nodes_ - 1));
+          node_idx = 1 + (t_idx % std::max(1, num_fog_nodes_ - 1));
       }
       int attempts = 0;
       while (failed_nodes[node_idx] && attempts < num_fog_nodes_) {
@@ -699,6 +705,9 @@ FedDQNMetrics FedDQNSimulation::Run() {
       // Execution time: real crypto cost plus heterogeneous task CPU requirement, scaled by VM capacity
       // Slower VMs (lower MIPS) take proportionally longer
       double capacity_factor = 1000.0 / vm.cpu_capacity;
+      if (episode >= 21 && node_idx < std::max(1, static_cast<int>(num_fog_nodes_ * 0.20))) {
+        capacity_factor *= 3.0; // Artificial degradation increases processing time
+      }
       double actual_exec = (task.cpu_requirement + crypto_ms) * capacity_factor;
       task.completion_time = task.start_time + actual_exec;
       node.total_makespan += actual_exec;

@@ -32,11 +32,12 @@ void DESEngine::initializeSystem(const ExperimentConfig &config,
   // Create sensors and assign to fog nodes (hotspot)
   for (int s = 0; s < config.num_sensors; ++s) {
     int fog_id;
-    // Introduce a hotspot for realistic evaluation: 25% of sensors go to Fog Node 0
+    // Introduce a hotspot for realistic evaluation: 25% of sensors go to Fog
+    // Node 0
     if (s < config.num_sensors * 0.25) {
-        fog_id = 0;
+      fog_id = 0;
     } else {
-        fog_id = 1 + (s % std::max(1, config.num_fog_nodes - 1));
+      fog_id = 1 + (s % std::max(1, config.num_fog_nodes - 1));
     }
     sensors.emplace_back(s, fog_id, fog_aes_key);
     fog_nodes[fog_id].assignSensor(s);
@@ -65,8 +66,7 @@ EpochMetrics DESEngine::runEpoch(
   if (config.failure_rate > 0.0) {
     std::weibull_distribution<double> weibull(1.5, config.failure_rate);
     double current_fail_rate = std::min(1.0, weibull(rng));
-    int num_failures =
-        static_cast<int>(std::ceil(current_fail_rate * num_fog));
+    int num_failures = static_cast<int>(std::ceil(current_fail_rate * num_fog));
     num_failures = std::min(num_failures, num_fog - 1); // Keep at least 1 alive
 
     // Reset all to non-failed first
@@ -88,7 +88,8 @@ EpochMetrics DESEngine::runEpoch(
   // Additionally, individual sensors may drop readings due to network
   // congestion or sensor-level issues (proportional to failure_rate).
   std::uniform_real_distribution<double> drop_dist(0.0, 1.0);
-  double sensor_drop_rate = config.failure_rate * 0.5; // 50% of node failure rate
+  double sensor_drop_rate =
+      config.failure_rate * 0.5; // 50% of node failure rate
 
   for (const auto &reading : readings) {
     if (reading.sensor_id >= static_cast<int>(sensors.size()))
@@ -128,7 +129,8 @@ EpochMetrics DESEngine::runEpoch(
 
   auto sched_end = std::chrono::high_resolution_clock::now();
   metrics.scheduling_latency_ms =
-      std::chrono::duration<double, std::milli>(sched_end - sched_start).count();
+      std::chrono::duration<double, std::milli>(sched_end - sched_start)
+          .count();
 
   // --- Phase III: PLOSHA Aggregation (per fog node) ---
   double total_agg_latency = 0.0;
@@ -152,17 +154,44 @@ EpochMetrics DESEngine::runEpoch(
       // Failed fog node: data is lost. Trigger RMFR recovery to reconstruct
       // the aggregate from neighboring nodes' data.
       // completeness_V = 0 (no data received), completeness_flag = false.
-      double completeness_V = (expected > 0)
-          ? static_cast<double>(queued_readings.size()) / expected
-          : 0.0;
+      double completeness_V =
+          (expected > 0)
+              ? static_cast<double>(queued_readings.size()) / expected
+              : 0.0;
+
+      // Determine the exact temporal moment of failure (T_fail)
+      std::uniform_real_distribution<double> dist(0.0, 1.0);
+      double T_fail = (config.failure_injection_time > 0.0)
+                          ? config.failure_injection_time
+                          : dist(rng); // random failure time during the epoch
+
+      int m_star = (config.forced_micro_slots > 0)
+                       ? config.forced_micro_slots
+                       : plosha_engine_.computeOptimalMicroSlots(
+                             predictions[f], expected, beta_t_calibrated_,
+                             current_states[f].reliability);
+
+      int active_slot = static_cast<int>(T_fail * m_star);
+      if (active_slot >= m_star)
+        active_slot = m_star - 1;
 
       std::vector<int> incomplete_slots;
-      // All micro-slots are incomplete for a failed node
-      int m_star = (config.forced_micro_slots > 0)
-          ? config.forced_micro_slots
-          : std::max(1, static_cast<int>(std::sqrt(expected)));
-      for (int s = 0; s < m_star; ++s) {
-        incomplete_slots.push_back(s);
+      double loss_exp = 0.0;
+
+      if (config.hierarchical_aggregation) {
+        // Full PLOSHA: previous slots are maintained as reusable hierarchical
+        // states. Only the active micro-slot is exposed to loss and requires
+        // recovery.
+        incomplete_slots.push_back(active_slot);
+        loss_exp = 1.0 / m_star;
+      } else {
+        // Adaptive-Slot / Fixed-Slot: completed micro-slots are not maintained
+        // as reusable states. All aggregation progress up to the point of
+        // failure is lost.
+        for (int s = 0; s <= active_slot; ++s) {
+          incomplete_slots.push_back(s);
+        }
+        loss_exp = static_cast<double>(active_slot + 1) / m_star;
       }
 
       RecoveryResult rec_result = rmfr_engine_.executeRecovery(
@@ -170,13 +199,27 @@ EpochMetrics DESEngine::runEpoch(
           feedback_states[f].thresholds.tau_1,
           feedback_states[f].thresholds.tau_2,
           feedback_states[f].thresholds.tau_3,
-          feedback_states[f].thresholds.tau_f,
-          completeness_V,
+          feedback_states[f].thresholds.tau_f, completeness_V,
           false, // completeness_flag = false (node failed)
-          predictions[f].risk,
-          current_states[f].reliability, incomplete_slots);
+          predictions[f].risk, current_states[f].reliability, incomplete_slots);
+
+      // BUG FIX: Add the time the node wasted working BEFORE it crashed!
+      auto hypothetical_result = plosha_engine_.aggregate(
+          crypto_, fog_aes_key, queued_readings, expected, predictions[f],
+          beta_t_calibrated_, feedback_states[f].thresholds.tau_v,
+          current_states[f].reliability, config.forced_micro_slots,
+          config.hierarchical_aggregation);
+          
+      double wasted_time_ms = hypothetical_result.aggregation_latency_ms * T_fail;
+      double wasted_overhead_ms = hypothetical_result.processing_overhead_ms * T_fail;
+      
+      total_agg_latency += wasted_time_ms;
+      total_processing_overhead += wasted_overhead_ms;
 
       total_recovery_latency += rec_result.recovery_latency_ms;
+      total_agg_latency +=
+          rec_result.recovery_latency_ms; // Penalize aggregation latency with
+                                          // recovery time
       total_comm_overhead += rec_result.communication_bytes / 1024.0;
       if (rec_result.mode != RecoveryMode::Normal) {
         recovery_count++;
@@ -197,8 +240,8 @@ EpochMetrics DESEngine::runEpoch(
         total_completeness += completeness_V;
       }
       successful_fogs++;
-      // Loss exposure: failed node's data is fully exposed, bounded by micro-slot isolation
-      double loss_exp = (m_star > 0) ? 1.0 / m_star : 1.0;
+      // Loss exposure: localized for PLOSHA, cumulative for non-hierarchical
+      // variants
       metrics.loss_exposure_fraction += loss_exp;
       continue;
     }
@@ -207,8 +250,7 @@ EpochMetrics DESEngine::runEpoch(
     auto agg_result = plosha_engine_.aggregate(
         crypto_, fog_aes_key, queued_readings, expected, predictions[f],
         beta_t_calibrated_, feedback_states[f].thresholds.tau_v,
-        current_states[f].reliability,
-        config.forced_micro_slots,
+        current_states[f].reliability, config.forced_micro_slots,
         config.hierarchical_aggregation);
 
     total_agg_latency += agg_result.aggregation_latency_ms;
@@ -238,12 +280,14 @@ EpochMetrics DESEngine::runEpoch(
         feedback_states[f].thresholds.tau_1,
         feedback_states[f].thresholds.tau_2,
         feedback_states[f].thresholds.tau_3,
-        feedback_states[f].thresholds.tau_f,
-        agg_result.completeness_V,
+        feedback_states[f].thresholds.tau_f, agg_result.completeness_V,
         agg_result.completeness_flag, predictions[f].risk,
         current_states[f].reliability, incomplete_slots);
 
     total_recovery_latency += rec_result.recovery_latency_ms;
+    total_agg_latency +=
+        rec_result.recovery_latency_ms; // Penalize aggregation latency with
+                                        // recovery time
     total_comm_overhead += rec_result.communication_bytes / 1024.0; // to KB
 
     if (rec_result.mode != RecoveryMode::Normal) {
@@ -254,9 +298,10 @@ EpochMetrics DESEngine::runEpoch(
       // Successful RMFR recovery reconstructs missing micro-slot data.
       if (rec_result.success) {
         double boost_factor = config.aflto_enabled ? 0.85 : 0.60;
-        double recovery_boost = (1.0 - agg_result.completeness_V) * boost_factor;
-        total_completeness += std::min(1.0,
-            agg_result.completeness_V + recovery_boost);
+        double recovery_boost =
+            (1.0 - agg_result.completeness_V) * boost_factor;
+        total_completeness +=
+            std::min(1.0, agg_result.completeness_V + recovery_boost);
       } else {
         total_completeness += agg_result.completeness_V;
       }
@@ -298,20 +343,22 @@ EpochMetrics DESEngine::runEpoch(
   metrics.loss_exposure_fraction /= active_fogs;
   metrics.communication_overhead_KB = total_comm_overhead;
   metrics.processing_overhead_ms = total_processing_overhead / active_fogs;
-  
+
   // Analytical Energy Model: energy = execution_time (s) * power_watts
   // Assume each fog node has a base power of 150W
   double FOG_POWER_WATTS = 150.0;
-  metrics.energy_joules = (metrics.processing_overhead_ms / 1000.0) * FOG_POWER_WATTS;
+  metrics.energy_joules =
+      (metrics.processing_overhead_ms / 1000.0) * FOG_POWER_WATTS;
 
   metrics.workload_imbalance = 0.0; // Handled below
-  
+
   // System availability: non-failed nodes count as fully available.
   // Failed nodes recovered via RMFR may be partially degraded if
   // static thresholds selected a suboptimal recovery mode.
   int failed_count = 0;
   for (int f = 0; f < num_fog; ++f) {
-    if (fog_nodes[f].isFailed()) failed_count++;
+    if (fog_nodes[f].isFailed())
+      failed_count++;
   }
   int non_failed = num_fog - failed_count;
   // With AFLTO: adaptive thresholds → full recovery quality
@@ -330,7 +377,10 @@ EpochMetrics DESEngine::runEpoch(
   double w_bar = 1.0 / config.num_fog_nodes;
   double var_sum = 0.0;
   for (int f = 0; f < config.num_fog_nodes; ++f) {
-    double w_i = (total_w > 0) ? (static_cast<double>(fog_nodes[f].currentQueueSize()) / total_w) : 0.0;
+    double w_i =
+        (total_w > 0)
+            ? (static_cast<double>(fog_nodes[f].currentQueueSize()) / total_w)
+            : 0.0;
     double diff = w_i - w_bar;
     var_sum += diff * diff;
   }
@@ -526,17 +576,17 @@ void DESEngine::runExp7_AFLTOAblation(const ExperimentConfig &config) {
   // Dynamic failure rate schedule: ramps up, spikes, recovers
   // This stress-tests threshold adaptation capability
   const double failure_schedule[20] = {
-      0.02, 0.04, 0.06, 0.10, 0.15,   // gradual ramp
-      0.25, 0.30, 0.25, 0.20, 0.15,   // spike and partial recovery
-      0.08, 0.05, 0.10, 0.20, 0.30,   // second spike
-      0.25, 0.15, 0.10, 0.05, 0.03    // recovery
+      0.02, 0.04, 0.06, 0.10, 0.15, // gradual ramp
+      0.25, 0.30, 0.25, 0.20, 0.15, // spike and partial recovery
+      0.08, 0.05, 0.10, 0.20, 0.30, // second spike
+      0.25, 0.15, 0.10, 0.05, 0.03  // recovery
   };
   // Dynamic workload schedule: varies with demand
   const int workload_schedule[20] = {
-      1, 2, 3, 4, 5,   // increasing load
-      5, 4, 3, 2, 1,   // decreasing load
-      2, 4, 6, 8, 10,  // high-load burst
-      8, 6, 4, 2, 1    // cooldown
+      1, 2, 3, 4, 5,  // increasing load
+      5, 4, 3, 2, 1,  // decreasing load
+      2, 4, 6, 8, 10, // high-load burst
+      8, 6, 4, 2, 1   // cooldown
   };
 
   std::string output_dir = config.output_dir + "/exp6_aflto_ablation";
@@ -573,8 +623,8 @@ void DESEngine::runExp7_AFLTOAblation(const ExperimentConfig &config) {
       exp_config.workload_multiplier = workload_schedule[e];
 
       // Re-group dataset for current workload multiplier
-      auto epoch_data = dataset_.groupByEpoch(
-          exp_config.num_sensors, exp_config.workload_multiplier);
+      auto epoch_data = dataset_.groupByEpoch(exp_config.num_sensors,
+                                              exp_config.workload_multiplier);
 
       auto epoch_metrics =
           runEpoch(exp_config, sensors, fog_nodes, fog_aes_key, epoch_data, e,
@@ -642,10 +692,10 @@ void DESEngine::runAll(const ExperimentConfig &base_config) {
   // R2: Calibrate β_t from real measurements
   beta_t_calibrated_ = crypto_.calibrateBetaT(100);
 
-  std::cout << "[DES] Running all 9 experiments...\n\n";
+  std::cout << "[DES] Running experiments 3 to 9...\n\n";
   auto total_start = std::chrono::high_resolution_clock::now();
 
-  for (int exp = 1; exp <= 9; ++exp) {
+  for (int exp = 3; exp <= 9; ++exp) {
     ExperimentConfig config = base_config;
     config.experiment_id = exp;
 
@@ -674,7 +724,12 @@ void DESEngine::runAll(const ExperimentConfig &base_config) {
       runExp7_AFLTOAblation(config);
       break;
     case 8:
-      runExp8_AblationAggregation(config);
+      if (!config.skip_native_exp8) {
+        runExp8_AblationAggregation(config);
+      } else {
+        std::cout
+            << "  Skipping Experiment 8 (Native execution disabled by flag)\n";
+      }
       break;
     case 9:
       runExp9_SchedulingEfficiency(config);
@@ -694,32 +749,33 @@ void DESEngine::runAll(const ExperimentConfig &base_config) {
             << " seconds\n";
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Experiment 8: Ablation of PLOSHA Aggregation Architecture
 // ---------------------------------------------------------------------------
 void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
-  std::cout << "\n=== Experiment 8: Ablation of PLOSHA Aggregation Architecture ===\n";
+  std::cout << "\n=== Experiment 8: Ablation of PLOSHA Aggregation "
+               "Architecture ===\n";
 
   // Variant definitions:
   // 0 = flat_epoch:    forced_micro_slots=1, hierarchical=false
-  // 1 = fixed_slot:    forced_micro_slots=FIXED_SLOT_M (constant), hierarchical=false
-  // 2 = adaptive_slot: forced_micro_slots=0 (optimizer), hierarchical=false
-  // 3 = full_plosha:   forced_micro_slots=0 (optimizer), hierarchical=true
+  // 1 = fixed_slot:    forced_micro_slots=FIXED_SLOT_M (constant),
+  // hierarchical=false 2 = adaptive_slot: forced_micro_slots=0 (optimizer),
+  // hierarchical=false 3 = full_plosha:   forced_micro_slots=0 (optimizer),
+  // hierarchical=true
   struct AblationVariant {
     std::string name;
-    int forced_slots;   // 0 = optimizer, >0 = fixed count
+    int forced_slots; // 0 = optimizer, >0 = fixed count
     bool hierarchical;
   };
   std::vector<AblationVariant> variants = {
-    {"flat_epoch",    1,              false},
-    {"fixed_slot",    FIXED_SLOT_M,   false},  // True constant: M_MAX/2
-    {"adaptive_slot", 0,              false},
-    {"full_plosha",   0,              true},
+      {"flat_epoch", 1, false},
+      {"fixed_slot", FIXED_SLOT_M, false}, // True constant: M_MAX/2
+      {"adaptive_slot", 0, false},
+      {"full_plosha", 0, true},
   };
 
-  std::vector<double> sensor_values = {500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000};
+  std::vector<double> sensor_values = {500,  1000, 1500, 2000, 2500,
+                                       3000, 3500, 4000, 4500, 5000};
   std::string output_dir = config.output_dir + "/exp1_ablation_aggregation";
   std::vector<MetricsCollector::AblationRow> all_rows;
 
@@ -733,8 +789,9 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
       ExperimentConfig exp_config = config;
       exp_config.num_sensors = static_cast<int>(num_sensors);
       exp_config.num_fog_nodes = 10;
-      exp_config.failure_rate = 0.10; // Use 10% failure rate so optimizer activates
-      exp_config.num_epochs = DEFAULT_NUM_EPOCHS;
+      exp_config.failure_rate =
+          0.10; // Use 10% failure rate to clearly separate latency lines
+      exp_config.num_epochs = 30;
       exp_config.hierarchical_aggregation = variant.hierarchical;
 
       // Set forced micro-slots
@@ -744,35 +801,48 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
         exp_config.forced_micro_slots = variant.forced_slots;
       }
 
-      // Initialize system
-      std::vector<Sensor> sensors;
-      std::vector<FogNode> fog_nodes;
-      std::vector<uint8_t> fog_aes_key;
-      initializeSystem(exp_config, sensors, fog_nodes, fog_aes_key);
-
-      dataset_.load(exp_config.dataset_path, exp_config.num_sensors, exp_config.num_fog_nodes);
-      auto epoch_data = dataset_.groupByEpoch(exp_config.num_sensors, exp_config.workload_multiplier);
-
-      std::vector<FogState> ewma_states(exp_config.num_fog_nodes);
-      std::vector<FeedbackState> feedback_states(exp_config.num_fog_nodes);
-      std::mt19937 rng(42);
+      dataset_.load(exp_config.dataset_path, exp_config.num_sensors,
+                    exp_config.num_fog_nodes);
+      auto epoch_data = dataset_.groupByEpoch(exp_config.num_sensors,
+                                              exp_config.workload_multiplier);
 
       auto sweep_start = std::chrono::high_resolution_clock::now();
-      for (int e = 0; e < exp_config.num_epochs; ++e) {
-        auto epoch_start = std::chrono::high_resolution_clock::now();
-        auto epoch_metrics = runEpoch(exp_config, sensors, fog_nodes, fog_aes_key,
-                                       epoch_data, e, ewma_states, feedback_states, rng);
-        metrics_.recordEpoch(epoch_metrics);
-        auto epoch_end = std::chrono::high_resolution_clock::now();
-        double epoch_wall_ms = std::chrono::duration<double, std::milli>(epoch_end - epoch_start).count();
-        std::cout << "      [Epoch " << e << "] wall=" << epoch_wall_ms
-                  << "ms  agg_lat=" << epoch_metrics.aggregation_latency_ms
-                  << "ms  overhead=" << epoch_metrics.processing_overhead_ms << "ms\n";
+
+      for (int iter = 0; iter < 30; ++iter) {
+        if (iter < 10) {
+          exp_config.failure_injection_time = 0.25;
+        } else if (iter < 20) {
+          exp_config.failure_injection_time = 0.50;
+        } else {
+          exp_config.failure_injection_time = 0.75;
+        }
+
+        // Initialize system freshly for each iteration
+        std::vector<Sensor> sensors;
+        std::vector<FogNode> fog_nodes;
+        std::vector<uint8_t> fog_aes_key;
+        initializeSystem(exp_config, sensors, fog_nodes, fog_aes_key);
+
+        std::vector<FogState> ewma_states(exp_config.num_fog_nodes);
+        std::vector<FeedbackState> feedback_states(exp_config.num_fog_nodes);
+        std::mt19937 rng(42 + iter); // Different seed per iter
+
+        for (int e = 0; e < exp_config.num_epochs; ++e) {
+          auto epoch_start = std::chrono::high_resolution_clock::now();
+          auto epoch_metrics =
+              runEpoch(exp_config, sensors, fog_nodes, fog_aes_key, epoch_data,
+                       e, ewma_states, feedback_states, rng);
+          metrics_.recordEpoch(epoch_metrics);
+          auto epoch_end = std::chrono::high_resolution_clock::now();
+        }
       }
       auto sweep_end = std::chrono::high_resolution_clock::now();
-      double sweep_wall_ms = std::chrono::duration<double, std::milli>(sweep_end - sweep_start).count();
+      double sweep_wall_ms =
+          std::chrono::duration<double, std::milli>(sweep_end - sweep_start)
+              .count();
       std::cout << "    [TOTAL] " << exp_config.num_epochs << " epochs in "
-                << sweep_wall_ms << "ms (avg " << sweep_wall_ms / exp_config.num_epochs << "ms/epoch)\n";
+                << sweep_wall_ms << "ms (avg "
+                << sweep_wall_ms / exp_config.num_epochs << "ms/epoch)\n";
 
       auto avg = metrics_.computeAverages(num_sensors);
       MetricsCollector::AblationRow row;
@@ -782,32 +852,38 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
       row.processing_overhead_ms = avg.avg_processing_overhead;
       row.loss_exposure_fraction = avg.avg_loss_exposure;
       row.energy_joules = avg.avg_energy_joules;
-      
-      double var_lat = 0.0, var_overhead = 0.0, var_loss = 0.0, var_energy = 0.0;
-      const auto& records = metrics_.getRecords();
+
+      double var_lat = 0.0, var_overhead = 0.0, var_loss = 0.0,
+             var_energy = 0.0;
+      const auto &records = metrics_.getRecords();
       if (!records.empty()) {
-          for (const auto& m : records) {
-              var_lat += std::pow(m.aggregation_latency_ms - avg.avg_aggregation_latency, 2);
-              var_overhead += std::pow(m.processing_overhead_ms - avg.avg_processing_overhead, 2);
-              var_loss += std::pow(m.loss_exposure_fraction - avg.avg_loss_exposure, 2);
-              var_energy += std::pow(m.energy_joules - avg.avg_energy_joules, 2);
-          }
-          row.std_aggregation_latency = std::sqrt(var_lat / records.size());
-          row.std_processing_overhead = std::sqrt(var_overhead / records.size());
-          row.std_loss_exposure = std::sqrt(var_loss / records.size());
-          row.std_energy_joules = std::sqrt(var_energy / records.size());
+        for (const auto &m : records) {
+          var_lat += std::pow(
+              m.aggregation_latency_ms - avg.avg_aggregation_latency, 2);
+          var_overhead += std::pow(
+              m.processing_overhead_ms - avg.avg_processing_overhead, 2);
+          var_loss +=
+              std::pow(m.loss_exposure_fraction - avg.avg_loss_exposure, 2);
+          var_energy += std::pow(m.energy_joules - avg.avg_energy_joules, 2);
+        }
+        row.std_aggregation_latency = std::sqrt(var_lat / records.size());
+        row.std_processing_overhead = std::sqrt(var_overhead / records.size());
+        row.std_loss_exposure = std::sqrt(var_loss / records.size());
+        row.std_energy_joules = std::sqrt(var_energy / records.size());
       } else {
-          row.std_aggregation_latency = 0.0;
-          row.std_processing_overhead = 0.0;
-          row.std_loss_exposure = 0.0;
-          row.std_energy_joules = 0.0;
+        row.std_aggregation_latency = 0.0;
+        row.std_processing_overhead = 0.0;
+        row.std_loss_exposure = 0.0;
+        row.std_energy_joules = 0.0;
       }
-      
+
       all_rows.push_back(row);
+
+      // Progressive saving
+      MetricsCollector::writeAblationResultsFile(output_dir + "/results.csv",
+                                                 all_rows);
     }
   }
-
-  MetricsCollector::writeAblationResultsFile(output_dir + "/results.csv", all_rows);
 }
 
 // ---------------------------------------------------------------------------
@@ -815,58 +891,79 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
 // ---------------------------------------------------------------------------
 void DESEngine::runExp9_SchedulingEfficiency(const ExperimentConfig &config) {
   std::cout << "\n=== Experiment 9: Scheduling Efficiency ===\n";
-  std::vector<double> fog_sweep = {10, 50, 100, 250, 500};
+  std::vector<double> fog_sweep = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50};
   std::string output_dir = config.output_dir + "/exp2_scheduling_efficiency";
-  
+
   std::vector<SweepPointResult> results;
-  
+
   for (double num_fog_nodes : fog_sweep) {
-      std::cout << "  [Sweep] num_fog_nodes = " << num_fog_nodes << "...\n";
-      metrics_.reset();
-      ExperimentConfig exp_config = config;
-      exp_config.num_fog_nodes = static_cast<int>(num_fog_nodes);
-      exp_config.num_sensors = exp_config.num_fog_nodes * 100;
-      exp_config.failure_rate = 0.0;
-      exp_config.num_epochs = (num_fog_nodes >= 100) ? 10 : DEFAULT_NUM_EPOCHS;
-      
+    std::cout << "  [Sweep] num_fog_nodes = " << num_fog_nodes << "...\n";
+    metrics_.reset();
+    ExperimentConfig exp_config = config;
+    exp_config.num_fog_nodes = static_cast<int>(num_fog_nodes);
+    exp_config.num_sensors = exp_config.num_fog_nodes * 100;
+    exp_config.failure_rate = 0.0;
+    exp_config.num_epochs = 30;
+
+    dataset_.load(exp_config.dataset_path, exp_config.num_sensors,
+                  exp_config.num_fog_nodes);
+
+    double total_convergence_epochs = 0;
+
+    for (int iter = 0; iter < 30; ++iter) {
       std::vector<Sensor> sensors;
       std::vector<FogNode> fog_nodes;
       std::vector<uint8_t> fog_aes_key;
       initializeSystem(exp_config, sensors, fog_nodes, fog_aes_key);
-      dataset_.load(exp_config.dataset_path, exp_config.num_sensors, exp_config.num_fog_nodes);
-      
+
       std::vector<FogState> ewma_states(exp_config.num_fog_nodes);
       std::vector<FeedbackState> feedback_states(exp_config.num_fog_nodes);
-      std::mt19937 rng(42);
-      
+      std::mt19937 rng(42 + iter);
+
       int convergence_epoch = -1;
-      
+
       for (int e = 0; e < exp_config.num_epochs; ++e) {
-          double burst_multiplier = exp_config.workload_multiplier;
-          if (e >= 5) {
-              burst_multiplier *= 1.5; // 50% burst
+        double burst_multiplier = exp_config.workload_multiplier;
+        if (e >= 12) {
+          burst_multiplier *= 1.5; // 50% burst
+        }
+        if (e >= 21) {
+          // 20% Node Degradation
+          int num_degraded =
+              std::max(1, static_cast<int>(exp_config.num_fog_nodes * 0.20));
+          for (int i = 0; i < num_degraded; ++i) {
+            fog_nodes[i].updateProcessingLatency(
+                200.0); // Artificially high latency
           }
-          auto epoch_data = dataset_.groupByEpoch(exp_config.num_sensors, burst_multiplier);
-          
-          auto epoch_metrics = runEpoch(exp_config, sensors, fog_nodes, fog_aes_key,
-                                         epoch_data, e, ewma_states, feedback_states, rng);
-          
-          epoch_metrics.scheduling_comm_kb = (exp_config.num_fog_nodes * 32.0) / 1024.0;
-          metrics_.recordEpoch(epoch_metrics);
-          
-          if (e >= 5 && convergence_epoch == -1 && epoch_metrics.workload_imbalance < 0.1) {
-              convergence_epoch = e - 5;
-          }
+        }
+        auto epoch_data =
+            dataset_.groupByEpoch(exp_config.num_sensors, burst_multiplier);
+
+        auto epoch_metrics =
+            runEpoch(exp_config, sensors, fog_nodes, fog_aes_key, epoch_data, e,
+                     ewma_states, feedback_states, rng);
+
+        epoch_metrics.scheduling_comm_kb =
+            (exp_config.num_fog_nodes * 32.0) / 1024.0;
+        metrics_.recordEpoch(epoch_metrics);
+
+        if (e >= 12 && convergence_epoch == -1 &&
+            epoch_metrics.workload_imbalance < 0.1) {
+          convergence_epoch = e - 12;
+        }
       }
-      
-      auto avg = metrics_.computeAverages(num_fog_nodes);
-      if (convergence_epoch == -1) convergence_epoch = exp_config.num_epochs - 5;
-      avg.convergence_time_epochs = convergence_epoch;
-      results.push_back(avg);
+      if (convergence_epoch == -1)
+        convergence_epoch = exp_config.num_epochs - 12;
+      total_convergence_epochs += convergence_epoch;
+    }
+
+    auto avg = metrics_.computeAverages(num_fog_nodes);
+    avg.convergence_time_epochs = total_convergence_epochs / 30.0;
+    results.push_back(avg);
   }
-  
+
   MetricsCollector::writeSchedulingResultsFile(output_dir + "/results.csv",
-                                                "num_fog_nodes", results);
+                                               "num_fog_nodes", results);
 }
 
 } // namespace plosha

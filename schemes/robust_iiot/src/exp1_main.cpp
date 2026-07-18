@@ -39,27 +39,50 @@ int main() {
         int n_sensors = sensor_counts[i];
         std::cout << "\n--- Sensors: " << n_sensors << " ---" << std::endl;
 
-        // Fresh initialization for each sensor count
         sim.Initialize(n_sensors, NUM_EDGE_SERVERS, PAILLIER_BITS, DP_EPSILON);
         sim.RunRegistration();
 
-        // Run aggregation and measure latency
-        AggregationTimings t = sim.RunAggregationRound(1);
+        const int NUM_EPISODES = 30;
+        double total_ms_accum = 0;
+        AggregationTimings avg_t = {0,0,0,0,0,0,0,0,0};
 
-        std::cout << "Total aggregation latency: " << std::fixed << std::setprecision(2)
-                  << t.total_ms << " ms" << std::endl;
-        std::cout << "  Encrypt: " << t.sensor_encrypt_ms << " ms" << std::endl;
-        std::cout << "  Sign:    " << t.sensor_sign_ms << " ms" << std::endl;
-        std::cout << "  BV(ES):  " << t.es_batch_verify_ms << " ms" << std::endl;
-        std::cout << "  Agg:     " << t.es_aggregate_ms << " ms" << std::endl;
-        std::cout << "  Noise:   " << t.es_noise_ms << " ms" << std::endl;
-        std::cout << "  Sign(ES):" << t.es_sign_ms << " ms" << std::endl;
-        std::cout << "  BV(CC):  " << t.cc_batch_verify_ms << " ms" << std::endl;
-        std::cout << "  Decrypt: " << t.cc_decrypt_ms << " ms" << std::endl;
+        for (int e = 0; e < NUM_EPISODES; ++e) {
+            AggregationTimings t = sim.RunAggregationRound(1);
+            avg_t.total_ms += t.total_ms;
+            avg_t.sensor_encrypt_ms += t.sensor_encrypt_ms;
+            avg_t.sensor_sign_ms += t.sensor_sign_ms;
+            avg_t.es_batch_verify_ms += t.es_batch_verify_ms;
+            avg_t.es_aggregate_ms += t.es_aggregate_ms;
+            avg_t.es_noise_ms += t.es_noise_ms;
+            avg_t.es_sign_ms += t.es_sign_ms;
+            avg_t.cc_batch_verify_ms += t.cc_batch_verify_ms;
+            avg_t.cc_decrypt_ms += t.cc_decrypt_ms;
+        }
 
-        // Output: variable_value = num_sensors, primary_metric = aggregation_latency_ms
+        // Average
+        avg_t.total_ms /= NUM_EPISODES;
+        avg_t.sensor_encrypt_ms /= NUM_EPISODES;
+        avg_t.sensor_sign_ms /= NUM_EPISODES;
+        avg_t.es_batch_verify_ms /= NUM_EPISODES;
+        avg_t.es_aggregate_ms /= NUM_EPISODES;
+        avg_t.es_noise_ms /= NUM_EPISODES;
+        avg_t.es_sign_ms /= NUM_EPISODES;
+        avg_t.cc_batch_verify_ms /= NUM_EPISODES;
+        avg_t.cc_decrypt_ms /= NUM_EPISODES;
+
+        std::cout << "Average aggregation latency (" << NUM_EPISODES << " runs): " << std::fixed << std::setprecision(2)
+                  << avg_t.total_ms << " ms" << std::endl;
+        std::cout << "  Encrypt: " << avg_t.sensor_encrypt_ms << " ms" << std::endl;
+        std::cout << "  Sign:    " << avg_t.sensor_sign_ms << " ms" << std::endl;
+        std::cout << "  BV(ES):  " << avg_t.es_batch_verify_ms << " ms" << std::endl;
+        std::cout << "  Agg:     " << avg_t.es_aggregate_ms << " ms" << std::endl;
+        std::cout << "  Noise:   " << avg_t.es_noise_ms << " ms" << std::endl;
+        std::cout << "  Sign(ES):" << avg_t.es_sign_ms << " ms" << std::endl;
+        std::cout << "  BV(CC):  " << avg_t.cc_batch_verify_ms << " ms" << std::endl;
+        std::cout << "  Decrypt: " << avg_t.cc_decrypt_ms << " ms" << std::endl;
+
         out << n_sensors << "," << std::fixed << std::setprecision(4)
-            << t.total_ms << ",," << std::endl;
+            << avg_t.total_ms << ",," << std::endl;
     }
 
     out.close();

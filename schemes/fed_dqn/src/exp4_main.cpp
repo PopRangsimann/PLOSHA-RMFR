@@ -14,7 +14,7 @@ int main() {
     const int NUM_FOG_NODES = 10;
     const int NUM_VMS_PER_NODE = 4;
     const int NUM_SENSORS = 2000;
-    const int NUM_EPISODES = 10;
+    const int NUM_EPISODES = 30;
 
     // Failure rates to sweep (2% to 20%)
     const double failure_rates[] = {0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20};
