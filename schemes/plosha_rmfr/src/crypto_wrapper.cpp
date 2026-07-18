@@ -259,11 +259,17 @@ CryptoWrapper::teeTransform(const std::vector<uint8_t> &aes_key,
 // R2 FIX: β_t calibration — measure real per-slot overhead
 // ---------------------------------------------------------------------------
 double CryptoWrapper::calibrateBetaT(int num_trials) {
-  // Test if RDRAND hardware instruction fixes the entropy starvation
-  num_trials = 5;
+  // R9 FIX: the debug override `num_trials = 5;` (left over from an RDRAND
+  // entropy-starvation investigation) silently discarded the caller's
+  // requested sample size (100, see des_engine.cpp) and calibrated beta_t
+  // from only 5 timing samples. Removed: the caller's num_trials is now
+  // honored, and the first ~10% of trials are discarded as JIT/cache/
+  // allocator warm-up before averaging, which the previous version also
+  // never did.
+  int warmup = (num_trials > 20) ? num_trials / 10 : 0;
 
   std::cout << "[CryptoWrapper] Calibrating β_t with " << num_trials
-            << " trials...\n";
+            << " trials (" << warmup << " warm-up discarded)...\n";
 
   // Generate a test AES key and a sample reading
   auto test_key = generateAESKey();
@@ -293,11 +299,14 @@ double CryptoWrapper::calibrateBetaT(int num_trials) {
     trial_times.push_back(elapsed_s);
   }
 
-  double avg =
-      std::accumulate(trial_times.begin(), trial_times.end(), 0.0) / num_trials;
+  int counted = num_trials - warmup;
+  double avg = std::accumulate(trial_times.begin() + warmup, trial_times.end(),
+                               0.0) /
+              counted;
   std::cout << "[CryptoWrapper] β_t calibrated = " << (avg * 1000.0)
             << " ms/slot"
-            << " (from " << num_trials << " trials)\n";
+            << " (from " << counted << " trials, " << warmup
+            << " warm-up discarded)\n";
   return avg;
 }
 

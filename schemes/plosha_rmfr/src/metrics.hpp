@@ -18,10 +18,13 @@ struct EpochMetrics {
     double queue_utilization = 0.0;
     int recovery_frequency = 0;
     double scheduling_latency_ms = 0.0;
+    double state_refresh_ms = 0.0;
     double workload_imbalance = 0.0;
     double processing_overhead_ms = 0.0;
     double energy_joules = 0.0;
     double scheduling_comm_kb = 0.0;
+    double recomputation_overhead_ms = 0.0;
+    double reused_microslot_count = 0.0;
 };
 
 // Averaged metrics written as one CSV row per sweep point
@@ -36,7 +39,11 @@ struct SweepPointResult {
     double avg_queue_utilization = 0.0;
     double avg_recovery_frequency = 0.0;
     double avg_scheduling_latency = 0.0;
+    double std_scheduling_latency = 0.0;
+    double avg_state_refresh_ms = 0.0;
+    double std_state_refresh_ms = 0.0;
     double avg_workload_imbalance = 0.0;
+    double std_workload_imbalance = 0.0;
     double avg_processing_overhead = 0.0;
     double avg_energy_joules = 0.0;
     double avg_scheduling_comm_kb = 0.0;
@@ -80,6 +87,10 @@ public:
         double std_loss_exposure;
         double energy_joules;
         double std_energy_joules;
+        double recomputation_overhead_ms;
+        double std_recomputation_overhead;
+        double reused_microslot_count;
+        double std_reused_microslot_count;
     };
     static void writeAblationResultsFile(const std::string& filepath,
                                           const std::vector<AblationRow>& rows);

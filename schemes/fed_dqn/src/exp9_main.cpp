@@ -50,8 +50,10 @@ int main() {
         
         // FedDQN requires synchronizing DQN weights (approx 100KB per node per episode)
         double comm_kb = n_fog * 100.0;
-        // RL typically takes ~4-6 episodes to converge to a burst
-        double convergence_epochs = 5.0;
+        // R11 FIX: previously a hardcoded 5.0 literal ("RL typically takes
+        // ~4-6 episodes to converge"), never computed from simulation
+        // state. Now read from the real per-episode measurement in Run().
+        double convergence_epochs = m.convergence_time_epochs;
 
         std::cout << "Scheduling latency: " << std::fixed << std::setprecision(6)
                   << m.scheduling_latency_ms << " ms" << std::endl;

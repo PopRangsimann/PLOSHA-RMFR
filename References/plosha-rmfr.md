@@ -2535,10 +2535,16 @@ under varying workload and failure conditions.</figcaption>
 
 As shown in Fig. [2](#fig:exp1_ablation){reference-type="ref"
 reference="fig:exp1_ablation"}, aggregation latency increases with the
-number of sensors for all variants. Under stable conditions, Flat-Epoch
-incurs minimal slot-management overhead but suffers from the largest
-aggregation-loss exposure and recomputation cost when failures occur
-because the entire aggregation epoch must be reconstructed. Fixed-Slot
+number of sensors for all variants. Because every configuration in this
+experiment includes an injected fog-node interruption, the reported
+aggregation latency is measured inclusive of interruption-recovery
+cost rather than isolating steady-state, failure-free operation. Under
+stable conditions, Flat-Epoch incurs minimal slot-management overhead,
+though this saving is not directly visible below: Flat-Epoch instead
+suffers from the largest aggregation-loss exposure and recomputation
+cost when failures occur because the entire aggregation epoch must be
+reconstructed, and this recomputation cost dominates its reported
+latency. Fixed-Slot
 confines recovery to smaller aggregation regions; however, its static
 granularity cannot adapt to changing workload and reliability
 conditions, resulting in either unnecessary slot-management overhead or

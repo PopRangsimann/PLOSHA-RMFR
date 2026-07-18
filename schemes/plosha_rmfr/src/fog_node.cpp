@@ -1,5 +1,6 @@
 #include "fog_node.hpp"
 #include <algorithm>
+#include <cstddef>
 
 namespace plosha {
 
@@ -42,11 +43,13 @@ FogState FogNode::getState() const {
     FogState state;
 
     int current_weight = 0;
+    std::size_t current_backlog = 0;
     {
         std::lock_guard<std::mutex> lock(*queue_mutex_);
         current_weight = total_queue_weight_;
+        current_backlog = reading_queue_.size();
     }
-    
+
     // Max capacity approx: 65535 (max quantized val) * queue_capacity_
     double max_weight_capacity = 65535.0 * queue_capacity_;
 
@@ -55,8 +58,20 @@ FogState FogNode::getState() const {
         ? std::min(1.0, static_cast<double>(current_weight) / max_weight_capacity)
         : 0.0;
 
-    // Q_i: same normalization as W_i for queue occupancy
-    state.queue_load = state.workload;
+    // R10 FIX: Q_i previously copied W_i verbatim (state.queue_load =
+    // state.workload), collapsing two of the three dimensions of the
+    // capacity model (paper Eq. 8: Cap_i uses omega_w*W_i + omega_q*Q_i +
+    // omega_l*L_i as independent terms) into one. Q_i is now derived from
+    // actual queue occupancy (item count vs. queue_capacity_) rather than
+    // the value-weighted workload signal, so the two can diverge -- e.g. a
+    // backlog of many low-value readings (high Q_i, low W_i) or a few
+    // heavy readings (low Q_i, high W_i), and under the burst multiplier in
+    // Exp2 where arrival rate outpaces drain rate independently of reading
+    // size.
+    state.queue_load = (queue_capacity_ > 0)
+        ? std::min(1.0, static_cast<double>(current_backlog) /
+                            static_cast<double>(queue_capacity_))
+        : 0.0;
 
     // R6 FIX: L_i = processing_latency / max_expected_latency, normalized to [0,1]
     state.latency = (max_latency_ms_ > 0)

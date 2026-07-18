@@ -113,7 +113,13 @@ EpochMetrics DESEngine::runEpoch(
   }
 
   // --- Phase II: EWMA Prediction ---
-  auto sched_start = std::chrono::high_resolution_clock::now();
+  // R8 FIX: this loop refreshes predicted state for the *entire fleet* once
+  // per epoch (Cap_i/FE_i/Risk_i for every fog node). The paper's own
+  // definition of "scheduling latency" (Experimental Setup, Exp. 2) starts
+  // the clock only *after* candidate-node states are available and excludes
+  // state collection, so this fleet-wide refresh is reported separately as
+  // state_refresh_ms rather than folded into scheduling_latency_ms below.
+  auto refresh_start = std::chrono::high_resolution_clock::now();
 
   std::vector<FogState> current_states(num_fog);
   std::vector<PredictionVector> predictions(num_fog);
@@ -127,6 +133,20 @@ EpochMetrics DESEngine::runEpoch(
                                    feedback_states[f].thresholds.tau_r);
   }
 
+  auto refresh_end = std::chrono::high_resolution_clock::now();
+  metrics.state_refresh_ms =
+      std::chrono::duration<double, std::milli>(refresh_end - refresh_start)
+          .count();
+
+  // R8 FIX: scheduling_latency_ms now times only the actual selection
+  // decision — "from ... candidate-node states until a fog node is
+  // selected" — using the same U_j(t) utility (paper Eq. 30) that Phase IV
+  // already uses for recovery-candidate selection (rmfr.cpp). Passing
+  // failed_fog_id = -1 excludes no candidate, matching a fresh routing
+  // decision rather than a post-failure recovery. This mirrors how the
+  // FedDQN baseline excludes GetState() and times only SelectAction().
+  auto sched_start = std::chrono::high_resolution_clock::now();
+  (void)rmfr_engine_.selectRecoveryCandidate(fog_nodes, predictions, -1);
   auto sched_end = std::chrono::high_resolution_clock::now();
   metrics.scheduling_latency_ms =
       std::chrono::duration<double, std::milli>(sched_end - sched_start)
@@ -202,6 +222,19 @@ EpochMetrics DESEngine::runEpoch(
           feedback_states[f].thresholds.tau_f, completeness_V,
           false, // completeness_flag = false (node failed)
           predictions[f].risk, current_states[f].reliability, incomplete_slots);
+
+      // R13 FIX: expose the paper-promised Exp1 metrics. Slots 0..active_slot-1
+      // were already completed before T_fail; incomplete_slots is exactly the
+      // subset of those that still require recomputation (all of them for the
+      // non-hierarchical variants, only active_slot itself for Full PLOSHA --
+      // see the branch above). The remainder were reused, not recomputed.
+      if (rec_result.mode == RecoveryMode::MicroRecovery ||
+          rec_result.mode == RecoveryMode::Delegation ||
+          rec_result.mode == RecoveryMode::Failover) {
+        metrics.recomputation_overhead_ms += rec_result.recovery_latency_ms;
+        metrics.reused_microslot_count +=
+            std::max(0, active_slot + 1 - static_cast<int>(incomplete_slots.size()));
+      }
 
       // BUG FIX: Add the time the node wasted working BEFORE it crashed!
       auto hypothetical_result = plosha_engine_.aggregate(
@@ -854,9 +887,16 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
       row.energy_joules = avg.avg_energy_joules;
 
       double var_lat = 0.0, var_overhead = 0.0, var_loss = 0.0,
-             var_energy = 0.0;
+             var_energy = 0.0, var_recomp = 0.0, var_reused = 0.0;
+      double sum_recomp = 0.0, sum_reused = 0.0;
       const auto &records = metrics_.getRecords();
       if (!records.empty()) {
+        for (const auto &m : records) {
+          sum_recomp += m.recomputation_overhead_ms;
+          sum_reused += m.reused_microslot_count;
+        }
+        double avg_recomp = sum_recomp / records.size();
+        double avg_reused = sum_reused / records.size();
         for (const auto &m : records) {
           var_lat += std::pow(
               m.aggregation_latency_ms - avg.avg_aggregation_latency, 2);
@@ -865,16 +905,26 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
           var_loss +=
               std::pow(m.loss_exposure_fraction - avg.avg_loss_exposure, 2);
           var_energy += std::pow(m.energy_joules - avg.avg_energy_joules, 2);
+          var_recomp += std::pow(m.recomputation_overhead_ms - avg_recomp, 2);
+          var_reused += std::pow(m.reused_microslot_count - avg_reused, 2);
         }
         row.std_aggregation_latency = std::sqrt(var_lat / records.size());
         row.std_processing_overhead = std::sqrt(var_overhead / records.size());
         row.std_loss_exposure = std::sqrt(var_loss / records.size());
         row.std_energy_joules = std::sqrt(var_energy / records.size());
+        row.recomputation_overhead_ms = avg_recomp;
+        row.std_recomputation_overhead = std::sqrt(var_recomp / records.size());
+        row.reused_microslot_count = avg_reused;
+        row.std_reused_microslot_count = std::sqrt(var_reused / records.size());
       } else {
         row.std_aggregation_latency = 0.0;
         row.std_processing_overhead = 0.0;
         row.std_loss_exposure = 0.0;
         row.std_energy_joules = 0.0;
+        row.recomputation_overhead_ms = 0.0;
+        row.std_recomputation_overhead = 0.0;
+        row.reused_microslot_count = 0.0;
+        row.std_reused_microslot_count = 0.0;
       }
 
       all_rows.push_back(row);

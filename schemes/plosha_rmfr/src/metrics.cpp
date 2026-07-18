@@ -1,5 +1,6 @@
 #include "metrics.hpp"
 #include <numeric>
+#include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <cstdlib>
@@ -27,6 +28,7 @@ SweepPointResult MetricsCollector::computeAverages(double variable_value) const 
         result.avg_queue_utilization += m.queue_utilization;
         result.avg_recovery_frequency += m.recovery_frequency;
         result.avg_scheduling_latency += m.scheduling_latency_ms;
+        result.avg_state_refresh_ms += m.state_refresh_ms;
         result.avg_workload_imbalance += m.workload_imbalance;
         result.avg_processing_overhead += m.processing_overhead_ms;
         result.avg_energy_joules += m.energy_joules;
@@ -41,10 +43,29 @@ SweepPointResult MetricsCollector::computeAverages(double variable_value) const 
     result.avg_queue_utilization /= n;
     result.avg_recovery_frequency /= n;
     result.avg_scheduling_latency /= n;
+    result.avg_state_refresh_ms /= n;
     result.avg_workload_imbalance /= n;
     result.avg_processing_overhead /= n;
     result.avg_energy_joules /= n;
     result.avg_scheduling_comm_kb /= n;
+
+    // R7 FIX: dispersion (population std) for the three Exp2 headline metrics,
+    // so scheduling-efficiency comparisons can be reported with error bars
+    // instead of bare means. Two-pass (mean already known above).
+    if (n > 1.0) {
+        double var_sched = 0.0, var_refresh = 0.0, var_imbalance = 0.0;
+        for (const auto& m : epoch_records_) {
+            double d_sched = m.scheduling_latency_ms - result.avg_scheduling_latency;
+            double d_refresh = m.state_refresh_ms - result.avg_state_refresh_ms;
+            double d_imb = m.workload_imbalance - result.avg_workload_imbalance;
+            var_sched += d_sched * d_sched;
+            var_refresh += d_refresh * d_refresh;
+            var_imbalance += d_imb * d_imb;
+        }
+        result.std_scheduling_latency = std::sqrt(var_sched / n);
+        result.std_state_refresh_ms = std::sqrt(var_refresh / n);
+        result.std_workload_imbalance = std::sqrt(var_imbalance / n);
+    }
     return result;
 }
 
@@ -119,7 +140,13 @@ void MetricsCollector::writeAblationResultsFile(const std::string& filepath,
         std::cerr << "[Metrics] ERROR: Cannot open " << filepath << "\n";
         return;
     }
-    file << "variant,num_sensors,aggregation_latency_ms,std_aggregation_latency,processing_overhead_ms,std_processing_overhead,loss_exposure_fraction,std_loss_exposure,energy_joules,std_energy_joules\n";
+    // R13 FIX: recomputation_overhead_ms and reused_microslot_count are the
+    // two metrics the paper's Experiment 1 text promises ("recomputation
+    // overhead, and the number of reused completed micro-slot aggregates")
+    // but the collector previously never emitted. Both are read directly
+    // from the existing MicroRecovery/D_i^miss-D_i^valid bookkeeping in
+    // runEpoch, not newly fabricated.
+    file << "variant,num_sensors,aggregation_latency_ms,std_aggregation_latency,processing_overhead_ms,std_processing_overhead,loss_exposure_fraction,std_loss_exposure,energy_joules,std_energy_joules,recomputation_overhead_ms,std_recomputation_overhead,reused_microslot_count,std_reused_microslot_count\n";
     for (const auto& r : rows) {
         file << r.variant
              << "," << std::fixed << std::setprecision(6) << r.num_sensors
@@ -131,6 +158,10 @@ void MetricsCollector::writeAblationResultsFile(const std::string& filepath,
              << "," << r.std_loss_exposure
              << "," << r.energy_joules
              << "," << r.std_energy_joules
+             << "," << r.recomputation_overhead_ms
+             << "," << r.std_recomputation_overhead
+             << "," << r.reused_microslot_count
+             << "," << r.std_reused_microslot_count
              << "\n";
     }
     file.close();
@@ -152,12 +183,20 @@ void MetricsCollector::writeSchedulingResultsFile(const std::string& filepath,
         std::cerr << "[Metrics] ERROR: Cannot open " << filepath << "\n";
         return;
     }
-    file << variable_name << ",scheduling_latency_ms,workload_imbalance,scheduling_comm_kb,convergence_time_epochs\n";
+    file << variable_name
+         << ",scheduling_latency_ms,std_scheduling_latency_ms"
+         << ",state_refresh_ms,std_state_refresh_ms"
+         << ",workload_imbalance,std_workload_imbalance"
+         << ",scheduling_comm_kb,convergence_time_epochs\n";
     for (const auto& r : results) {
         file << std::fixed << std::setprecision(6)
              << r.variable_value
              << "," << r.avg_scheduling_latency
+             << "," << r.std_scheduling_latency
+             << "," << r.avg_state_refresh_ms
+             << "," << r.std_state_refresh_ms
              << "," << r.avg_workload_imbalance
+             << "," << r.std_workload_imbalance
              << "," << r.avg_scheduling_comm_kb
              << "," << r.convergence_time_epochs
              << "\n";

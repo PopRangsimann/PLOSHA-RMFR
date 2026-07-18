@@ -90,15 +90,18 @@ PLOSHA-RMFR/
 
 Each experiment varies a single independent variable and measures specific metrics. Not every scheme participates in every experiment.
 
+This table follows the numbering used in `References/plosha-rmfr.md` Section V ("Experimental Setup" onward) and the current `schemes/plosha_rmfr/exp<N>_*/` folder names. An earlier draft of this benchmark used a different 7-experiment design (Sensor Scalability / Fog Node Scalability as Exp1/Exp2); that design has been superseded and this table reflects the current one.
+
 | # | Description | Independent Variable | Primary Metric | Secondary Metrics | Schemes |
 |---|-------------|---------------------|---------------|-------------------|---------|
-| 1 | Sensor Scalability | Number of sensors (500–5000) | Aggregation latency | — | All |
-| 2 | Fog Node Scalability | Number of fog nodes (5–50) | Aggregation latency | — | PLOSHA, FedDQN, FT-Workflow, FT-Serverless |
-| 3 | Workload Intensity | Sensor reporting rate | Aggregation latency | Queue utilization, recovery frequency | All |
-| 4 | Failure Rate | Fog-node failure rate (2%–20%) | Recovery latency | Aggregation completeness, system availability | PLOSHA, FedDQN, FT-Workflow, FT-Serverless |
-| 5 | Aggregation-Loss Exposure | Number of micro-slots (1–20) | Loss exposure fraction | — | PLOSHA, Robust IIoT, FT-Workflow, FT-Serverless |
-| 6 | Recovery Communication | Number of incomplete micro-slots | Communication overhead (KB) | — | PLOSHA, FT-Workflow, FT-Serverless |
-| 7 | AFLTO Ablation | AFLTO enabled vs. disabled | Aggregation completeness | System availability | PLOSHA only |
+| 1 | Ablation of the PLOSHA Aggregation Architecture | Aggregation variant (Flat-Epoch / Fixed-Slot / Adaptive-Slot / Full PLOSHA) × number of sensors (500–5000) | Aggregation latency | Aggregation CPU time, loss exposure, recomputation overhead, reused micro-slot count | PLOSHA only (internal ablation) |
+| 2 | Scheduling Efficiency | Number of fog nodes (5–50) | Scheduling latency | Workload imbalance | PLOSHA, FedDQN, FT-Workflow, FT-Serverless |
+| 3 | Impact of Failure Rate | Fog-node failure rate (2%–20%) | Recovery latency | Aggregation completeness, system availability | PLOSHA, FedDQN, FT-Workflow, FT-Serverless |
+| 4 | Aggregation-Loss Exposure | Number of micro-slots (1–20) | Loss exposure fraction | — | PLOSHA, Robust IIoT, FT-Workflow, FT-Serverless |
+| 5 | Recovery Communication | Number of incomplete micro-slots | Communication overhead (KB) | — | PLOSHA, FT-Workflow, FT-Serverless |
+| 6 | AFLTO Ablation | AFLTO enabled vs. disabled | Aggregation completeness | System availability | PLOSHA only |
+
+A supplementary `exp3_workload_intensity/` sweep (sensor reporting rate vs. aggregation latency, queue utilization, recovery frequency) also exists for several schemes outside this paper-narrated set; it predates the current numbering and is not one of the six experiments described in the paper text.
 
 ## Rules
 

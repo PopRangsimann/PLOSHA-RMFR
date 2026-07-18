@@ -607,7 +607,18 @@ FedDQNMetrics FedDQNSimulation::Run() {
   double total_scheduling_time_ms = 0; // Wall-clock scheduling decision time
   int scheduling_decisions = 0;        // Number of scheduling decisions made
 
+  // R11 FIX: real per-episode convergence tracking (was a hardcoded 5.0 in
+  // exp9_main.cpp). Mirrors PLOSHA-RMFR's des_engine.cpp check: first
+  // episode at/after the burst (episode >= 12) whose own task distribution
+  // (not the cumulative one) has workload imbalance I_W < 0.1.
+  std::vector<int> tasks_before_episode(num_fog_nodes_, 0);
+  double convergence_epoch = -1.0;
+
   for (int episode = 0; episode < num_episodes_; episode++) {
+    for (int f = 0; f < num_fog_nodes_; f++) {
+      tasks_before_episode[f] = fog_nodes_[f].tasks_assigned;
+    }
+
     // Simulate fog node failures
     std::vector<bool> failed_nodes;
     SimulateFailures(failed_nodes);
@@ -779,7 +790,41 @@ FedDQNMetrics FedDQNSimulation::Run() {
 
     // Decay epsilon
     current_epsilon = std::max(epsilon_min_, current_epsilon * epsilon_decay_);
+
+    // R11 FIX: this episode's own imbalance, from the delta against the
+    // pre-episode snapshot (fog_nodes_[f].tasks_assigned is cumulative
+    // across the whole run, so a delta is required to isolate one episode).
+    if (episode >= 12 && convergence_epoch < 0.0) {
+      double episode_total = 0.0;
+      std::vector<double> episode_delta(num_fog_nodes_, 0.0);
+      for (int f = 0; f < num_fog_nodes_; f++) {
+        episode_delta[f] = static_cast<double>(fog_nodes_[f].tasks_assigned -
+                                               tasks_before_episode[f]);
+        episode_total += episode_delta[f];
+      }
+      if (episode_total > 0.0) {
+        double w_bar = 0.0;
+        for (int f = 0; f < num_fog_nodes_; f++) {
+          w_bar += episode_delta[f] / episode_total;
+        }
+        w_bar /= num_fog_nodes_;
+        double var_sum = 0.0;
+        for (int f = 0; f < num_fog_nodes_; f++) {
+          double w_i = episode_delta[f] / episode_total;
+          double diff = w_i - w_bar;
+          var_sum += diff * diff;
+        }
+        double episode_imbalance = std::sqrt(var_sum / num_fog_nodes_);
+        if (episode_imbalance < 0.1) {
+          convergence_epoch = episode - 12;
+        }
+      }
+    }
   }
+  if (convergence_epoch < 0.0) {
+    convergence_epoch = num_episodes_ - 12;
+  }
+  metrics.convergence_time_epochs = convergence_epoch;
 
   // Compute metrics (average over episodes)
   double ep = static_cast<double>(num_episodes_);
