@@ -2560,10 +2560,10 @@ aggregation subtrees.
 Full PLOSHA combines adaptive partitioning with hierarchical
 aggregation, allowing previously completed micro-slot aggregates to be
 reused during recovery while recomputing only the affected aggregation
-regions. Consequently, Full PLOSHA achieves the lowest
-interruption-induced aggregation latency and recomputation overhead
-while maintaining low aggregation-loss exposure across all workload
-conditions.
+regions. Consequently, Full PLOSHA achieves comparable interruption-induced
+aggregation latency and substantially lower recomputation overhead,
+while maintaining robustly lower aggregation-loss exposure across all
+workload conditions.
 
 These results demonstrate that adaptive partitioning primarily optimizes
 the aggregation granularity according to predicted operating conditions,
@@ -2625,8 +2625,9 @@ as the scheduling space grows.
 
 In contrast, PLOSHA-RMFR performs lightweight EWMA prediction and a
 single-pass evaluation of candidate nodes using predicted capacity,
-risk, and reliability. It therefore maintains lower scheduling latency,
-particularly under burst and degraded conditions. Its predictive
+risk, and reliability. Its scheduling decision cost is competitive with
+dedicated workflow schedulers and scales more favorably than FT-Workflow's,
+closing to parity by 45+ nodes. Its predictive
 load-sharing mechanism also avoids nodes approaching congestion,
 resulting in lower workload imbalance. These results demonstrate that
 PLOSHA-RMFR provides responsive and scalable scheduling under
