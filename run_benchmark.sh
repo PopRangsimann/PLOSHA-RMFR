@@ -17,7 +17,7 @@ make clean && make
 if [ ! -d "$ROOT_DIR/schemes/plosha_rmfr" ]; then
   mkdir -p "$ROOT_DIR/schemes/plosha_rmfr"
 fi
-./plosha_rmfr --experiment all --skip-native-exp8 --epochs 30 --dataset "$DATASET_PATH" --output "$ROOT_DIR/schemes/plosha_rmfr"
+./plosha_rmfr --experiment all --epochs 30 --dataset "$DATASET_PATH" --output "$ROOT_DIR/schemes/plosha_rmfr"
 echo "✔ PLOSHA-RMFR (Native) completed."
 echo ""
 
@@ -55,7 +55,7 @@ mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp3_workload_intensity"
 mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp4_loss_exposure"
 mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp5_recovery_comm"
 mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp6_aflto_ablation"
-gramine-sgx plosha_rmfr --experiment all --epochs 30 --dataset /dataset/plosha_dataset.csv --output /output
+gramine-sgx plosha_rmfr --experiment all --skip-native-exp8 --epochs 30 --dataset /dataset/plosha_dataset.csv --output /output
 echo "✔ PLOSHA-RMFR (SGX) completed."
 echo ""
 
