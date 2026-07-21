@@ -1,4 +1,5 @@
 #include "rmfr.hpp"
+#include "plosha.hpp"
 #include "config.hpp"
 #include <algorithm>
 #include <chrono>
@@ -73,10 +74,11 @@ int RMFREngine::selectRecoveryCandidate(
 RecoveryResult RMFREngine::executeRecovery(
     CryptoWrapper &crypto, std::vector<FogNode> &fog_nodes,
     const std::vector<PredictionVector> &predictions, int failed_fog_id,
-    const std::vector<uint8_t> & /*aes_key*/, double tau_1, double tau_2,
+    const std::vector<uint8_t> &aes_key, double tau_1, double tau_2,
     double tau_3, double tau_f, double completeness_V, bool completeness_flag,
     double risk, double reliability,
-    const std::vector<int> &incomplete_slot_indices) {
+    const std::vector<int> &incomplete_slot_indices,
+    const std::vector<MicroSlot> &slots) {
   auto start = std::chrono::high_resolution_clock::now();
   RecoveryResult result;
 
@@ -131,15 +133,30 @@ RecoveryResult RMFREngine::executeRecovery(
   }
   case RecoveryMode::MicroRecovery: {
     // Step 5: Re-aggregate only incomplete micro-slots
+    // Perform the same TEE-transform + Paillier aggregation as normal
+    // aggregation for each incomplete slot's readings. The cost scales
+    // with the actual number of readings in those slots.
     result.incomplete_slots = incomplete_slot_indices;
     size_t re_agg_bytes = 0;
 
-    // For each incomplete slot, create a dummy re-aggregation
-    // using real Paillier operations
-    for (size_t i = 0; i < incomplete_slot_indices.size(); ++i) {
-      // Encrypt a zero and aggregate (simulates re-aggregation)
-      PaillierCiphertext zero_ct = crypto.paillierEncrypt(0);
-      re_agg_bytes += zero_ct.byteSize();
+    for (int slot_idx : incomplete_slot_indices) {
+      if (slot_idx >= 0 && slot_idx < static_cast<int>(slots.size()) &&
+          !slots[slot_idx].readings.empty()) {
+        // Real re-aggregation: TEE-transform each reading and aggregate
+        std::vector<PaillierCiphertext> paillier_cts;
+        paillier_cts.reserve(slots[slot_idx].readings.size());
+        for (const auto &reading : slots[slot_idx].readings) {
+          PaillierCiphertext pct =
+              crypto.teeTransform(aes_key, reading.aes_ct);
+          paillier_cts.push_back(std::move(pct));
+        }
+        PaillierCiphertext slot_agg = crypto.aggregateMultiple(paillier_cts);
+        re_agg_bytes += slot_agg.byteSize();
+      } else {
+        // Empty or out-of-range slot: minimal cost
+        PaillierCiphertext zero_ct = crypto.paillierEncrypt(0);
+        re_agg_bytes += zero_ct.byteSize();
+      }
     }
 
     result.communication_bytes = re_agg_bytes;

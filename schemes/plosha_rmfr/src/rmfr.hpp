@@ -7,6 +7,9 @@
 #include <vector>
 #include <cstddef>
 
+// Forward declaration to avoid circular include
+namespace plosha { struct MicroSlot; }
+
 namespace plosha {
 
 enum class RecoveryMode { Normal, Delegation, MicroRecovery, Failover };
@@ -57,6 +60,7 @@ public:
                                 int failed_fog_id);
 
     // Phase IV Steps 4-6: Execute recovery
+    // slots: the partitioned micro-slot data for re-aggregation of incomplete slots
     RecoveryResult executeRecovery(CryptoWrapper& crypto,
                                    std::vector<FogNode>& fog_nodes,
                                    const std::vector<PredictionVector>& predictions,
@@ -66,7 +70,8 @@ public:
                                    double tau_f,
                                    double completeness_V, bool completeness_flag,
                                    double risk, double reliability,
-                                   const std::vector<int>& incomplete_slot_indices = {});
+                                   const std::vector<int>& incomplete_slot_indices = {},
+                                   const std::vector<MicroSlot>& slots = {});
 
     // Phase IV Step 7: Update reliability (paper Eq. 38)
     double updateReliability(double current_rel, bool success, double completeness_V);

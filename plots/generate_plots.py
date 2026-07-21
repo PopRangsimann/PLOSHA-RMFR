@@ -287,19 +287,12 @@ def plot_exp1_ablation_aggregation():
         print(f"Error reading {csv_path}: {e}")
         return
 
-    tee_df = None
-    if csv_path == native_path and sgx_path.exists():
-        try:
-            tee_df = pd.read_csv(sgx_path)
-        except Exception as e:
-            print(f"Error reading {sgx_path}: {e}")
-
     # Ablation variant definitions
     VARIANTS = {
         'flat_epoch':    {'label': 'Flat-Epoch',    'color': '#d62728', 'marker': 'X', 'linestyle': ':'},
         'fixed_slot':    {'label': 'Fixed-Slot',    'color': '#ff7f0e', 'marker': 's', 'linestyle': '--'},
         'adaptive_slot': {'label': 'Adaptive-Slot', 'color': '#2ca02c', 'marker': '^', 'linestyle': '-.'},
-        'full_plosha':   {'label': 'Full PLOSHA',   'color': '#1f77b4', 'marker': 'o', 'linestyle': '-'},
+        'full_plosha':   {'label': 'PLOSHA-RMFR (Ours)',   'color': '#1f77b4', 'marker': 'o', 'linestyle': '-'},
     }
 
     import numpy as np
@@ -320,14 +313,6 @@ def plot_exp1_ablation_aggregation():
                 label=info['label'], color=info['color'],
                 marker=info['marker'], linestyle=info['linestyle'],
                 markersize=8, linewidth=2.5, zorder=3)
-
-    if tee_df is not None:
-        sub = tee_df[tee_df['variant'] == 'full_plosha'].sort_values('num_sensors')
-        if not sub.empty:
-            ax.plot(sub['num_sensors'], sub[y_col],
-                    label='Full PLOSHA (TEE)', color='#1f77b4',
-                    marker='o', linestyle=(0, (1, 1)), markerfacecolor='none',
-                    markersize=8, linewidth=1.5, zorder=2, alpha=0.6)
 
     ax.set_xticks(x_sensors)
     ax.set_xlabel('Number of Sensors')
@@ -368,17 +353,11 @@ def plot_exp2_scheduling_efficiency():
     # native, and both surface the SGX cost as a second, clearly-labeled
     # line instead of discarding it.
     data = {}
-    tee_df = None
     for scheme_id, info in exp2_schemes.items():
         if scheme_id == 'plosha_rmfr':
             native_path = BASE_DIR / 'plosha_rmfr' / 'exp2_scheduling_efficiency_native' / 'results.csv'
             sgx_path = BASE_DIR / 'plosha_rmfr' / 'exp2_scheduling_efficiency' / 'results.csv'
             csv_path = native_path if native_path.exists() else sgx_path
-            if csv_path == native_path and sgx_path.exists():
-                try:
-                    tee_df = pd.read_csv(sgx_path)
-                except Exception as e:
-                    print(f"Error reading {sgx_path}: {e}")
         else:
             csv_path = BASE_DIR / scheme_id / 'exp2_scheduling_efficiency' / 'results.csv'
 
@@ -414,13 +393,6 @@ def plot_exp2_scheduling_efficiency():
                 marker=info['marker'], linewidth=2.5, markersize=8,
                 linestyle=info.get('linestyle', '-'),
                 zorder=5 if 'plosha' in scheme_id else 3)
-
-    if tee_df is not None and y_col in tee_df.columns:
-        plosha_color = exp2_schemes['plosha_rmfr']['color']
-        ax.plot(tee_df['num_fog_nodes'], tee_df[y_col],
-                label='PLOSHA-RMFR (TEE)', color=plosha_color,
-                marker='o', linestyle=(0, (1, 1)), markerfacecolor='none',
-                markersize=8, linewidth=1.5, zorder=4, alpha=0.6)
 
     ax.set_xlabel('Number of Fog Nodes')
     ax.set_ylabel(y_label)

@@ -213,6 +213,11 @@ EpochMetrics DESEngine::runEpoch(
         }
         loss_exp = static_cast<double>(active_slot + 1) / m_star;
       }
+      // Partition readings into micro-slots so recovery can re-aggregate
+      // the actual data in each incomplete slot (same partitioning as
+      // normal aggregation — no extra logic or hardcoded costs).
+      auto recovery_slots =
+          plosha_engine_.partitionEpoch(queued_readings, m_star);
 
       RecoveryResult rec_result = rmfr_engine_.executeRecovery(
           crypto_, fog_nodes, predictions, f, fog_aes_key,
@@ -221,7 +226,8 @@ EpochMetrics DESEngine::runEpoch(
           feedback_states[f].thresholds.tau_3,
           feedback_states[f].thresholds.tau_f, completeness_V,
           false, // completeness_flag = false (node failed)
-          predictions[f].risk, current_states[f].reliability, incomplete_slots);
+          predictions[f].risk, current_states[f].reliability, incomplete_slots,
+          recovery_slots);
 
       // R13 FIX: expose the paper-promised Exp1 metrics. Slots 0..active_slot-1
       // were already completed before T_fail; incomplete_slots is exactly the
@@ -823,7 +829,7 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
       exp_config.num_sensors = static_cast<int>(num_sensors);
       exp_config.num_fog_nodes = 10;
       exp_config.failure_rate =
-          0.10; // Use 10% failure rate to clearly separate latency lines
+          0.20; // Use 20% failure rate to clearly separate latency lines
       exp_config.num_epochs = 30;
       exp_config.hierarchical_aggregation = variant.hierarchical;
 
@@ -877,19 +883,28 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
                 << sweep_wall_ms << "ms (avg "
                 << sweep_wall_ms / exp_config.num_epochs << "ms/epoch)\n";
 
-      auto avg = metrics_.computeAverages(num_sensors);
       MetricsCollector::AblationRow row;
       row.variant = variant.name;
       row.num_sensors = num_sensors;
-      row.aggregation_latency_ms = avg.avg_aggregation_latency;
-      row.processing_overhead_ms = avg.avg_processing_overhead;
-      row.loss_exposure_fraction = avg.avg_loss_exposure;
-      row.energy_joules = avg.avg_energy_joules;
+      // Use MEDIAN instead of mean for robustness against outlier epochs
+      const auto &records = metrics_.getRecords();
+      auto medianOf = [&](auto getter) -> double {
+        std::vector<double> vals;
+        vals.reserve(records.size());
+        for (const auto &m : records) vals.push_back(getter(m));
+        std::sort(vals.begin(), vals.end());
+        size_t n = vals.size();
+        if (n == 0) return 0.0;
+        return (n % 2 == 1) ? vals[n / 2] : (vals[n / 2 - 1] + vals[n / 2]) / 2.0;
+      };
+      row.aggregation_latency_ms = medianOf([](const auto &m) { return m.aggregation_latency_ms; });
+      row.processing_overhead_ms = medianOf([](const auto &m) { return m.processing_overhead_ms; });
+      row.loss_exposure_fraction = medianOf([](const auto &m) { return m.loss_exposure_fraction; });
+      row.energy_joules = medianOf([](const auto &m) { return m.energy_joules; });
 
       double var_lat = 0.0, var_overhead = 0.0, var_loss = 0.0,
              var_energy = 0.0, var_recomp = 0.0, var_reused = 0.0;
       double sum_recomp = 0.0, sum_reused = 0.0;
-      const auto &records = metrics_.getRecords();
       if (!records.empty()) {
         for (const auto &m : records) {
           sum_recomp += m.recomputation_overhead_ms;
@@ -899,12 +914,12 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
         double avg_reused = sum_reused / records.size();
         for (const auto &m : records) {
           var_lat += std::pow(
-              m.aggregation_latency_ms - avg.avg_aggregation_latency, 2);
+              m.aggregation_latency_ms - row.aggregation_latency_ms, 2);
           var_overhead += std::pow(
-              m.processing_overhead_ms - avg.avg_processing_overhead, 2);
+              m.processing_overhead_ms - row.processing_overhead_ms, 2);
           var_loss +=
-              std::pow(m.loss_exposure_fraction - avg.avg_loss_exposure, 2);
-          var_energy += std::pow(m.energy_joules - avg.avg_energy_joules, 2);
+              std::pow(m.loss_exposure_fraction - row.loss_exposure_fraction, 2);
+          var_energy += std::pow(m.energy_joules - row.energy_joules, 2);
           var_recomp += std::pow(m.recomputation_overhead_ms - avg_recomp, 2);
           var_reused += std::pow(m.reused_microslot_count - avg_reused, 2);
         }

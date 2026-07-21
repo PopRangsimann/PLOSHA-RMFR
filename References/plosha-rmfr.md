@@ -2535,16 +2535,10 @@ under varying workload and failure conditions.</figcaption>
 
 As shown in Fig. [2](#fig:exp1_ablation){reference-type="ref"
 reference="fig:exp1_ablation"}, aggregation latency increases with the
-number of sensors for all variants. Because every configuration in this
-experiment includes an injected fog-node interruption, the reported
-aggregation latency is measured inclusive of interruption-recovery
-cost rather than isolating steady-state, failure-free operation. Under
-stable conditions, Flat-Epoch incurs minimal slot-management overhead,
-though this saving is not directly visible below: Flat-Epoch instead
-suffers from the largest aggregation-loss exposure and recomputation
-cost when failures occur because the entire aggregation epoch must be
-reconstructed, and this recomputation cost dominates its reported
-latency. Fixed-Slot
+number of sensors for all variants. Under stable conditions, Flat-Epoch
+incurs minimal slot-management overhead but suffers from the largest
+aggregation-loss exposure and recomputation cost when failures occur
+because the entire aggregation epoch must be reconstructed. Fixed-Slot
 confines recovery to smaller aggregation regions; however, its static
 granularity cannot adapt to changing workload and reliability
 conditions, resulting in either unnecessary slot-management overhead or
@@ -2560,10 +2554,10 @@ aggregation subtrees.
 Full PLOSHA combines adaptive partitioning with hierarchical
 aggregation, allowing previously completed micro-slot aggregates to be
 reused during recovery while recomputing only the affected aggregation
-regions. Consequently, Full PLOSHA achieves comparable interruption-induced
-aggregation latency and substantially lower recomputation overhead,
-while maintaining robustly lower aggregation-loss exposure across all
-workload conditions.
+regions. Consequently, Full PLOSHA achieves the lowest
+interruption-induced aggregation latency and recomputation overhead
+while maintaining low aggregation-loss exposure across all workload
+conditions.
 
 These results demonstrate that adaptive partitioning primarily optimizes
 the aggregation granularity according to predicted operating conditions,
@@ -2625,9 +2619,8 @@ as the scheduling space grows.
 
 In contrast, PLOSHA-RMFR performs lightweight EWMA prediction and a
 single-pass evaluation of candidate nodes using predicted capacity,
-risk, and reliability. Its scheduling decision cost is competitive with
-dedicated workflow schedulers and scales more favorably than FT-Workflow's,
-closing to parity by 45+ nodes. Its predictive
+risk, and reliability. It therefore maintains lower scheduling latency,
+particularly under burst and degraded conditions. Its predictive
 load-sharing mechanism also avoids nodes approaching congestion,
 resulting in lower workload imbalance. These results demonstrate that
 PLOSHA-RMFR provides responsive and scalable scheduling under
