@@ -3,10 +3,63 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <ctime>
 #include <iostream>
+#include <sstream>
 #include <thread>
+#include <sys/stat.h>
+#include <sys/utsname.h>
+#include <unistd.h>
+
+// Injected by the Makefile from `git rev-parse`; "unknown" when built outside
+// a git checkout.
+#ifndef GIT_COMMIT
+#define GIT_COMMIT "unknown"
+#endif
 
 namespace plosha {
+
+namespace {
+// Provenance shared by every experiment: enough to tie a results.csv back to
+// the code, host, and execution mode that produced it. Native vs Gramine-SGX
+// is detected via /dev/attestation, which Gramine mounts inside the enclave.
+std::vector<std::pair<std::string, std::string>>
+baseProvenance(const std::string &experiment, const ExperimentConfig &config) {
+  std::vector<std::pair<std::string, std::string>> kv;
+  kv.emplace_back("experiment", experiment);
+
+  char ts[32] = "unknown";
+  std::time_t now = std::time(nullptr);
+  if (std::tm *utc = std::gmtime(&now))
+    std::strftime(ts, sizeof(ts), "%Y-%m-%dT%H:%M:%SZ", utc);
+  kv.emplace_back("timestamp_utc", ts);
+
+  kv.emplace_back("git_commit", GIT_COMMIT);
+
+  char host[256] = "unknown";
+  gethostname(host, sizeof(host));
+  kv.emplace_back("hostname", host);
+
+  struct utsname un;
+  if (uname(&un) == 0)
+    kv.emplace_back("platform", std::string(un.sysname) + " " + un.release +
+                                    " " + un.machine);
+
+  struct stat st;
+  bool sgx = (stat("/dev/attestation", &st) == 0);
+  kv.emplace_back("execution_mode", sgx ? "gramine-sgx" : "native");
+
+  std::ostringstream fr;
+  fr << config.failure_rate;
+  kv.emplace_back("epochs", std::to_string(config.num_epochs));
+  kv.emplace_back("failure_rate",
+                  fr.str() + (config.failure_rate_set ? " (--failure-rate)"
+                                                      : " (default)"));
+  kv.emplace_back("dataset", config.dataset_path);
+  kv.emplace_back("paillier_key_bits", std::to_string(PAILLIER_KEY_BITS));
+  return kv;
+}
+} // namespace
 
 DESEngine::DESEngine() {}
 
@@ -442,6 +495,18 @@ std::vector<SweepPointResult> DESEngine::runSweep(const SweepConfig &sweep,
                                                   ExperimentConfig config) {
   std::vector<SweepPointResult> results;
 
+  // Provenance for this experiment's output directory. The swept variable is
+  // recorded by name; per-point values appear in results.csv itself.
+  {
+    auto kv = baseProvenance(sweep.variable_name + " sweep", config);
+    std::ostringstream vals;
+    for (size_t i = 0; i < sweep.sweep_values.size(); ++i)
+      vals << (i ? "," : "") << sweep.sweep_values[i];
+    kv.emplace_back("swept_variable", sweep.variable_name);
+    kv.emplace_back("sweep_values", vals.str());
+    MetricsCollector::writeRunMetadata(sweep.output_dir, kv);
+  }
+
   for (double val : sweep.sweep_values) {
     std::cout << "  [Sweep] " << sweep.variable_name << " = " << val << "...\n";
     metrics_.reset();
@@ -487,6 +552,13 @@ std::vector<SweepPointResult> DESEngine::runSweep(const SweepConfig &sweep,
       metrics_.recordEpoch(epoch_metrics);
     }
 
+    // Audit trail: keep the per-epoch rows this point's mean/std summarise.
+    {
+      std::ostringstream fname;
+      fname << sweep.output_dir << "/epoch_records/" << sweep.variable_name
+            << "_" << val << ".csv";
+      metrics_.writeEpochRecordsFile(fname.str());
+    }
     results.push_back(metrics_.computeAverages(val));
   }
 
@@ -507,8 +579,6 @@ void DESEngine::runExp1_SensorScalability(const ExperimentConfig &config) {
   ExperimentConfig exp_config = config;
   exp_config.num_fog_nodes = 10;
   exp_config.failure_rate = 0.0;
-  exp_config.num_epochs = DEFAULT_NUM_EPOCHS;
-
   auto results = runSweep(sweep, exp_config);
   MetricsCollector::writeResultsFile(sweep.output_dir + "/results.csv",
                                      sweep.variable_name, results);
@@ -524,8 +594,6 @@ void DESEngine::runExp2_FogScalability(const ExperimentConfig &config) {
   ExperimentConfig exp_config = config;
   exp_config.num_sensors = 2000;
   exp_config.failure_rate = 0.0;
-  exp_config.num_epochs = DEFAULT_NUM_EPOCHS;
-
   auto results = runSweep(sweep, exp_config);
   MetricsCollector::writeResultsFile(sweep.output_dir + "/results.csv",
                                      sweep.variable_name, results);
@@ -542,8 +610,6 @@ void DESEngine::runExp3_WorkloadIntensity(const ExperimentConfig &config) {
   exp_config.num_sensors = 1000;
   exp_config.num_fog_nodes = 10;
   exp_config.failure_rate = 0.05;
-  exp_config.num_epochs = DEFAULT_NUM_EPOCHS;
-
   auto results = runSweep(sweep, exp_config);
   MetricsCollector::writeResultsFile(sweep.output_dir + "/results.csv",
                                      sweep.variable_name, results);
@@ -561,8 +627,6 @@ void DESEngine::runExp4_FailureRate(const ExperimentConfig &config) {
   ExperimentConfig exp_config = config;
   exp_config.num_sensors = 1000;
   exp_config.num_fog_nodes = 10;
-  exp_config.num_epochs = DEFAULT_NUM_EPOCHS;
-
   auto results = runSweep(sweep, exp_config);
   MetricsCollector::writeResultsFile(sweep.output_dir + "/results.csv",
                                      sweep.variable_name, results);
@@ -579,8 +643,6 @@ void DESEngine::runExp5_LossExposure(const ExperimentConfig &config) {
   exp_config.num_sensors = 1000;
   exp_config.num_fog_nodes = 10;
   exp_config.failure_rate = 0.10;
-  exp_config.num_epochs = DEFAULT_NUM_EPOCHS;
-
   auto results = runSweep(sweep, exp_config);
   MetricsCollector::writeResultsFile(sweep.output_dir + "/results.csv",
                                      sweep.variable_name, results);
@@ -598,8 +660,6 @@ void DESEngine::runExp6_RecoveryComm(const ExperimentConfig &config) {
   exp_config.num_fog_nodes = 10;
   exp_config.forced_micro_slots = 10;
   exp_config.failure_rate = 0.10;
-  exp_config.num_epochs = DEFAULT_NUM_EPOCHS;
-
   auto results = runSweep(sweep, exp_config);
   MetricsCollector::writeResultsFile(sweep.output_dir + "/results.csv",
                                      sweep.variable_name, results);
@@ -631,6 +691,17 @@ void DESEngine::runExp7_AFLTOAblation(const ExperimentConfig &config) {
 
   std::string output_dir = config.output_dir + "/exp6_aflto_ablation";
   std::vector<SweepPointResult> results;
+
+  // Provenance. Epoch count is locked to the 20-entry failure/workload
+  // schedules above, so --epochs deliberately does not apply here.
+  {
+    ExperimentConfig eff = config;
+    eff.num_epochs = NUM_ABLATION_EPOCHS;
+    auto kv = baseProvenance("AFLTO ablation", eff);
+    kv.emplace_back("failure_rate_note",
+                    "per-epoch schedule 0.02-0.30, see failure_schedule[]");
+    MetricsCollector::writeRunMetadata(output_dir, kv);
+  }
 
   for (int aflto = 0; aflto <= 1; ++aflto) {
     std::cout << "  [Sweep] aflto_enabled = " << aflto << "...\n";
@@ -672,6 +743,12 @@ void DESEngine::runExp7_AFLTOAblation(const ExperimentConfig &config) {
       metrics_.recordEpoch(epoch_metrics);
     }
 
+    // Audit trail: keep the per-epoch rows this point's mean/std summarise.
+    {
+      std::ostringstream fname;
+      fname << output_dir << "/epoch_records/aflto_" << aflto << ".csv";
+      metrics_.writeEpochRecordsFile(fname.str());
+    }
     results.push_back(metrics_.computeAverages(static_cast<double>(aflto)));
   }
 
@@ -795,6 +872,14 @@ void DESEngine::runAll(const ExperimentConfig &base_config) {
 void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
   std::cout << "\n=== Experiment 8: Ablation of PLOSHA Aggregation "
                "Architecture ===\n";
+  // Echo the parameters actually in effect. These were previously hardcoded
+  // below and never reported, so a log could not be matched to the run that
+  // produced it.
+  std::cout << "  epochs=" << config.num_epochs << "  failure_rate="
+            << (config.failure_rate_set ? config.failure_rate
+                                        : EXP1_ABLATION_FAILURE_RATE)
+            << (config.failure_rate_set ? " (--failure-rate)" : " (default)")
+            << "  fog_nodes=sensors/100\n";
 
   // Variant definitions:
   // 0 = flat_epoch:    forced_micro_slots=1, hierarchical=false
@@ -819,6 +904,19 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
   std::string output_dir = config.output_dir + "/exp1_ablation_aggregation";
   std::vector<MetricsCollector::AblationRow> all_rows;
 
+  // Provenance records the failure rate actually in effect (the experiment's
+  // own default when --failure-rate was not given), not the config default.
+  {
+    ExperimentConfig eff = config;
+    if (!config.failure_rate_set)
+      eff.failure_rate = EXP1_ABLATION_FAILURE_RATE;
+    auto kv = baseProvenance("aggregation ablation (paper Exp1)", eff);
+    kv.emplace_back("variants", "flat_epoch,fixed_slot,adaptive_slot,full_plosha");
+    kv.emplace_back("sensor_sweep", "500-5000 step 500");
+    kv.emplace_back("fog_nodes", "max(5, sensors/100)");
+    MetricsCollector::writeRunMetadata(output_dir, kv);
+  }
+
   for (const auto &variant : variants) {
     std::cout << "  [Variant] " << variant.name << "\n";
 
@@ -828,10 +926,17 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
 
       ExperimentConfig exp_config = config;
       exp_config.num_sensors = static_cast<int>(num_sensors);
+      // Fog nodes scale with sensor count to hold the sensors-per-fog ratio
+      // constant at 100:1 across the sweep; a fixed count would mean 500
+      // sensors per fog node at the top end. Every variant gets the identical
+      // configuration, so the ablation comparison remains like-for-like.
       exp_config.num_fog_nodes = std::max(5, static_cast<int>(num_sensors) / 100); // Scale: 5@500 → 50@5000
-      exp_config.failure_rate =
-          0.50; // 50% failure rate to amplify recovery cost differences
-      exp_config.num_epochs = 30;
+      // Previously both of these were hardcoded here, silently discarding
+      // --failure-rate and --epochs for this experiment. The defaults are
+      // unchanged; they are just no longer unconditional.
+      exp_config.failure_rate = config.failure_rate_set
+                                    ? config.failure_rate
+                                    : EXP1_ABLATION_FAILURE_RATE;
       exp_config.hierarchical_aggregation = variant.hierarchical;
 
       // Set forced micro-slots
@@ -884,64 +989,36 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
                 << sweep_wall_ms << "ms (avg "
                 << sweep_wall_ms / exp_config.num_epochs << "ms/epoch)\n";
 
+      // Audit trail: keep the per-epoch rows this point's mean/std summarise.
+      {
+        std::ostringstream fname;
+        fname << output_dir << "/epoch_records/" << variant.name << "_"
+              << static_cast<int>(num_sensors) << ".csv";
+        metrics_.writeEpochRecordsFile(fname.str());
+      }
+
+      // Summarise this sweep point with the same estimator every other
+      // experiment uses (mean, population std) rather than a local one, so
+      // Exp1 is directly comparable with the remaining figures. Epoch-to-epoch
+      // variability is reported through the std columns instead of being
+      // suppressed by a robust centre chosen after the fact.
+      auto avg = metrics_.computeAverages(num_sensors);
+
       MetricsCollector::AblationRow row;
       row.variant = variant.name;
       row.num_sensors = num_sensors;
-      // Use MEDIAN instead of mean for robustness against outlier epochs
-      const auto &records = metrics_.getRecords();
-      auto medianOf = [&](auto getter) -> double {
-        std::vector<double> vals;
-        vals.reserve(records.size());
-        for (const auto &m : records) vals.push_back(getter(m));
-        std::sort(vals.begin(), vals.end());
-        size_t n = vals.size();
-        if (n == 0) return 0.0;
-        return (n % 2 == 1) ? vals[n / 2] : (vals[n / 2 - 1] + vals[n / 2]) / 2.0;
-      };
-      row.aggregation_latency_ms = medianOf([](const auto &m) { return m.aggregation_latency_ms; });
-      row.processing_overhead_ms = medianOf([](const auto &m) { return m.processing_overhead_ms; });
-      row.loss_exposure_fraction = medianOf([](const auto &m) { return m.loss_exposure_fraction; });
-      row.energy_joules = medianOf([](const auto &m) { return m.energy_joules; });
-
-      double var_lat = 0.0, var_overhead = 0.0, var_loss = 0.0,
-             var_energy = 0.0, var_recomp = 0.0, var_reused = 0.0;
-      double sum_recomp = 0.0, sum_reused = 0.0;
-      if (!records.empty()) {
-        for (const auto &m : records) {
-          sum_recomp += m.recomputation_overhead_ms;
-          sum_reused += m.reused_microslot_count;
-        }
-        double avg_recomp = sum_recomp / records.size();
-        double avg_reused = sum_reused / records.size();
-        for (const auto &m : records) {
-          var_lat += std::pow(
-              m.aggregation_latency_ms - row.aggregation_latency_ms, 2);
-          var_overhead += std::pow(
-              m.processing_overhead_ms - row.processing_overhead_ms, 2);
-          var_loss +=
-              std::pow(m.loss_exposure_fraction - row.loss_exposure_fraction, 2);
-          var_energy += std::pow(m.energy_joules - row.energy_joules, 2);
-          var_recomp += std::pow(m.recomputation_overhead_ms - avg_recomp, 2);
-          var_reused += std::pow(m.reused_microslot_count - avg_reused, 2);
-        }
-        row.std_aggregation_latency = std::sqrt(var_lat / records.size());
-        row.std_processing_overhead = std::sqrt(var_overhead / records.size());
-        row.std_loss_exposure = std::sqrt(var_loss / records.size());
-        row.std_energy_joules = std::sqrt(var_energy / records.size());
-        row.recomputation_overhead_ms = avg_recomp;
-        row.std_recomputation_overhead = std::sqrt(var_recomp / records.size());
-        row.reused_microslot_count = avg_reused;
-        row.std_reused_microslot_count = std::sqrt(var_reused / records.size());
-      } else {
-        row.std_aggregation_latency = 0.0;
-        row.std_processing_overhead = 0.0;
-        row.std_loss_exposure = 0.0;
-        row.std_energy_joules = 0.0;
-        row.recomputation_overhead_ms = 0.0;
-        row.std_recomputation_overhead = 0.0;
-        row.reused_microslot_count = 0.0;
-        row.std_reused_microslot_count = 0.0;
-      }
+      row.aggregation_latency_ms = avg.avg_aggregation_latency;
+      row.std_aggregation_latency = avg.std_aggregation_latency;
+      row.processing_overhead_ms = avg.avg_processing_overhead;
+      row.std_processing_overhead = avg.std_processing_overhead;
+      row.loss_exposure_fraction = avg.avg_loss_exposure;
+      row.std_loss_exposure = avg.std_loss_exposure;
+      row.energy_joules = avg.avg_energy_joules;
+      row.std_energy_joules = avg.std_energy_joules;
+      row.recomputation_overhead_ms = avg.avg_recomputation_overhead;
+      row.std_recomputation_overhead = avg.std_recomputation_overhead;
+      row.reused_microslot_count = avg.avg_reused_microslot_count;
+      row.std_reused_microslot_count = avg.std_reused_microslot_count;
 
       all_rows.push_back(row);
 
@@ -961,6 +1038,24 @@ void DESEngine::runExp9_SchedulingEfficiency(const ExperimentConfig &config) {
   std::string output_dir = config.output_dir + "/exp2_scheduling_efficiency";
 
   std::vector<SweepPointResult> results;
+
+  // Provenance for the effective configuration. This experiment fixes its own
+  // parameters (no failures, 30 epochs, sensors = fog_nodes * 100, workload
+  // burst at epoch 12, 20% node degradation at epoch 21); CLI overrides do
+  // not apply here because the burst/degradation schedule is defined in
+  // epoch indices and would silently shift under a different epoch count.
+  {
+    ExperimentConfig eff = config;
+    eff.failure_rate = 0.0;
+    eff.failure_rate_set = false;
+    eff.num_epochs = 30;
+    auto kv = baseProvenance("scheduling efficiency (paper Exp2)", eff);
+    kv.emplace_back("fog_sweep", "5-50 step 5");
+    kv.emplace_back("sensors", "fog_nodes * 100");
+    kv.emplace_back("iterations_per_point", "30");
+    kv.emplace_back("schedule", "workload burst x1.5 from epoch 12; 20% node degradation from epoch 21");
+    MetricsCollector::writeRunMetadata(output_dir, kv);
+  }
 
   for (double num_fog_nodes : fog_sweep) {
     std::cout << "  [Sweep] num_fog_nodes = " << num_fog_nodes << "...\n";
@@ -1023,6 +1118,13 @@ void DESEngine::runExp9_SchedulingEfficiency(const ExperimentConfig &config) {
       total_convergence_epochs += convergence_epoch;
     }
 
+    // Audit trail: all 30 iterations x 30 epochs behind this point's summary.
+    {
+      std::ostringstream fname;
+      fname << output_dir << "/epoch_records/fog_"
+            << static_cast<int>(num_fog_nodes) << ".csv";
+      metrics_.writeEpochRecordsFile(fname.str());
+    }
     auto avg = metrics_.computeAverages(num_fog_nodes);
     avg.convergence_time_epochs = total_convergence_epochs / 30.0;
     results.push_back(avg);

@@ -44,6 +44,7 @@ int main(int argc, char* argv[]) {
             config.num_epochs = std::stoi(argv[++i]);
         } else if (arg == "--failure-rate" && i + 1 < argc) {
             config.failure_rate = std::stod(argv[++i]);
+            config.failure_rate_set = true;
         } else if (arg == "--dataset" && i + 1 < argc) {
             config.dataset_path = argv[++i];
         } else if (arg == "--output" && i + 1 < argc) {

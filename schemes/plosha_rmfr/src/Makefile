@@ -1,5 +1,8 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -O2 -Wall -Wextra -pthread
+# Embed the commit that produced the binary, for run_metadata.txt provenance.
+# "-dirty" marks uncommitted changes; "unknown" means built outside git.
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)$(shell git diff --quiet 2>/dev/null || echo -dirty)
+CXXFLAGS = -std=c++17 -O2 -Wall -Wextra -pthread -DGIT_COMMIT='"$(GIT_COMMIT)"'
 LIBS = -lssl -lcrypto -lpthread
 
 CRYPTO_DIR = ../../../src/crypto

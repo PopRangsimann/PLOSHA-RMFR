@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <utility>
 
 namespace plosha {
 
@@ -45,9 +46,20 @@ struct SweepPointResult {
     double avg_workload_imbalance = 0.0;
     double std_workload_imbalance = 0.0;
     double avg_processing_overhead = 0.0;
+    double std_processing_overhead = 0.0;
     double avg_energy_joules = 0.0;
+    double std_energy_joules = 0.0;
     double avg_scheduling_comm_kb = 0.0;
     double convergence_time_epochs = 0.0;
+    // Exp1 (ablation) headline metrics. Kept here rather than computed at the
+    // call site so that every experiment derives its mean and dispersion from
+    // the same implementation.
+    double std_aggregation_latency = 0.0;
+    double std_loss_exposure = 0.0;
+    double avg_recomputation_overhead = 0.0;
+    double std_recomputation_overhead = 0.0;
+    double avg_reused_microslot_count = 0.0;
+    double std_reused_microslot_count = 0.0;
 };
 
 class MetricsCollector {
@@ -74,6 +86,17 @@ public:
 
     // Get raw records for variance computation
     const std::vector<EpochMetrics>& getRecords() const { return epoch_records_; }
+
+    // Audit trail: dump every recorded epoch as one CSV row, so the mean/std
+    // reported in results.csv can be checked against the underlying
+    // distribution. Called per sweep point, before reset() destroys the data.
+    void writeEpochRecordsFile(const std::string& filepath) const;
+
+    // Provenance: write a run_metadata.txt of key:value lines next to a
+    // results.csv, recording what produced it (commit, host, native vs SGX,
+    // effective parameters). Entries are ordered as given.
+    static void writeRunMetadata(const std::string& dir,
+                                 const std::vector<std::pair<std::string, std::string>>& entries);
 
     // Write ablation results (variant column format)
     struct AblationRow {

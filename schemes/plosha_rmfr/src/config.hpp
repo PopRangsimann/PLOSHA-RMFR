@@ -97,6 +97,15 @@ constexpr double DEFAULT_FAILURE_RATE   = 0.05;  // 5%
 constexpr int    DEFAULT_WORKLOAD_MULT  = 1;
 constexpr int    ABLATION_EPOCHS        = 30;   // Standardized: all experiments use 30 epochs
 
+// Failure rate used by Experiment 1 (aggregation ablation) when the caller
+// does not pass --failure-rate. It is deliberately higher than
+// DEFAULT_FAILURE_RATE: recovery cost is what separates the ablation variants,
+// and at 5% too few epochs trigger recovery for the variants to be
+// distinguishable. NOTE: this value lies outside the 0.02-0.35 range swept by
+// the failure-rate experiment, so any reported figure using it must say so.
+// Override on the command line for sensitivity analysis.
+constexpr double EXP1_ABLATION_FAILURE_RATE = 0.50;
+
 // ---------------------------------------------------------------------------
 // Experiment Configuration
 // ---------------------------------------------------------------------------
@@ -106,6 +115,10 @@ struct ExperimentConfig {
     int num_fog_nodes       = DEFAULT_NUM_FOG_NODES;
     int num_epochs          = DEFAULT_NUM_EPOCHS;
     double failure_rate     = DEFAULT_FAILURE_RATE;
+    // Set by the CLI parser when --failure-rate is supplied, so experiments
+    // carrying their own default can tell "explicitly requested" apart from
+    // "left unset" instead of ignoring the flag outright.
+    bool failure_rate_set   = false;
     int workload_multiplier = DEFAULT_WORKLOAD_MULT;
     int forced_micro_slots  = 0;      // 0 = use optimizer; >0 = force m*
     double failure_injection_time = 0.0; // 0.0 = random time; >0.0 = specific fraction (e.g. 0.25)
