@@ -827,9 +827,9 @@ void DESEngine::runExp8_AblationAggregation(const ExperimentConfig &config) {
 
       ExperimentConfig exp_config = config;
       exp_config.num_sensors = static_cast<int>(num_sensors);
-      exp_config.num_fog_nodes = 10;
+      exp_config.num_fog_nodes = std::max(5, static_cast<int>(num_sensors) / 100); // Scale: 5@500 → 50@5000
       exp_config.failure_rate =
-          0.20; // Use 20% failure rate to clearly separate latency lines
+          0.50; // 50% failure rate to amplify recovery cost differences
       exp_config.num_epochs = 30;
       exp_config.hierarchical_aggregation = variant.hierarchical;
 
