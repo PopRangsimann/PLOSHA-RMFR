@@ -167,7 +167,7 @@ done
 echo "  -> Running Exp 3 (Failure Rate)..."
 mkdir -p ../exp3_failure_rate
 echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp3_failure_rate/results.csv
-for v in 0.02 0.04 0.06 0.08 0.10 0.12 0.14 0.16 0.18 0.20; do
+for v in 0.02 0.04 0.06 0.08 0.10 0.12 0.14 0.16 0.18 0.20 0.25 0.30 0.35; do
   run_avg 4 $v >> ../exp3_failure_rate/results.csv
 done
 

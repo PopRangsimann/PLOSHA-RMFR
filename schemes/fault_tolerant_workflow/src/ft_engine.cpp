@@ -326,7 +326,8 @@ void FTEngine::runExp4_FailureRate(const ExperimentConfig &config) {
   std::cout << "\n=== Experiment 4: Failure Rate ===\n";
   SweepConfig sweep{
       "failure_rate",
-      {0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20},
+      {0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20, 0.25, 0.30,
+       0.35},
       config.output_dir + "/exp3_failure_rate"};
   ExperimentConfig exp_config = config;
   exp_config.num_sensors = 1000;

@@ -230,7 +230,7 @@ SimResult FTServerlessEdgeSim::runExp3_WorkloadIntensity() {
 
 // ── Exp4: Failure Rate ───────────────────────────────────────────────────
 SimResult FTServerlessEdgeSim::runExp4_FailureRate() {
-  double fail_rate = cfg_.variable_value; // Already a fraction (0.02-0.20)
+  double fail_rate = cfg_.variable_value; // Already a fraction (0.02-0.35)
   int n_cl = cfg_.num_cloudlets > 0 ? cfg_.num_cloudlets : 10;
   int n_sensors = cfg_.num_sensors > 0 ? cfg_.num_sensors : 1000;
   rng_.seed(cfg_.seed);

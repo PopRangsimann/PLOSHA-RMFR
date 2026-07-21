@@ -16,8 +16,8 @@ int main() {
     const int NUM_SENSORS = 2000;
     const int NUM_EPISODES = 30;
 
-    // Failure rates to sweep (2% to 20%)
-    const double failure_rates[] = {0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20};
+    // Failure rates to sweep (2% to 35%)
+    const double failure_rates[] = {0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20, 0.25, 0.30, 0.35};
     const int num_points = sizeof(failure_rates) / sizeof(failure_rates[0]);
 
     std::cout << "=== FedDQN — Experiment 4: Failure Rate ===" << std::endl;
