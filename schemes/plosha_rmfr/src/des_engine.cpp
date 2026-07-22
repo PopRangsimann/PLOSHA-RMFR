@@ -119,19 +119,30 @@ EpochMetrics DESEngine::runEpoch(
   if (config.failure_rate > 0.0) {
     std::weibull_distribution<double> weibull(1.5, config.failure_rate);
     double current_fail_rate = std::min(1.0, weibull(rng));
-    int num_failures = static_cast<int>(std::ceil(current_fail_rate * num_fog));
-    num_failures = std::min(num_failures, num_fog - 1); // Keep at least 1 alive
 
     // Reset all to non-failed first
     for (auto &fn : fog_nodes)
       fn.setFailed(false);
 
-    // Randomly select fog nodes to fail
-    std::vector<int> fog_indices(num_fog);
-    std::iota(fog_indices.begin(), fog_indices.end(), 0);
-    std::shuffle(fog_indices.begin(), fog_indices.end(), rng);
-    for (int i = 0; i < num_failures; ++i) {
-      fog_nodes[fog_indices[i]].setFailed(true);
+    // Independent Bernoulli(current_fail_rate) trial per node. The previous
+    // implementation converted the rate to a node COUNT via
+    // ceil(rate * num_fog), which quantizes the realized failure fraction
+    // and biases it in a num_fog-dependent way (measured: +0.7pp at 5 nodes
+    // to -5.4pp at 50 nodes vs. the nominal rate, after the num_fog-1 cap).
+    // Per-node trials realize the nominal rate without count rounding.
+    std::uniform_real_distribution<double> fail_coin(0.0, 1.0);
+    int num_failures = 0;
+    for (auto &fn : fog_nodes) {
+      if (fail_coin(rng) < current_fail_rate) {
+        fn.setFailed(true);
+        ++num_failures;
+      }
+    }
+
+    // Keep at least 1 node alive (same invariant as before).
+    if (num_failures == num_fog) {
+      std::uniform_int_distribution<int> pick(0, num_fog - 1);
+      fog_nodes[pick(rng)].setFailed(false);
     }
   }
 
@@ -143,6 +154,14 @@ EpochMetrics DESEngine::runEpoch(
   std::uniform_real_distribution<double> drop_dist(0.0, 1.0);
   double sensor_drop_rate =
       config.failure_rate * 0.5; // 50% of node failure rate
+
+  // Per-node assigned load this epoch, recorded at submission time. The
+  // workload-imbalance metric below must be computed from this, not from
+  // currentQueueSize(): by the time imbalance is measured the aggregation
+  // phase has already drained every queue, so queue sizes are all zero and
+  // the formula degenerates to exactly 1/num_fog for every epoch (std = 0),
+  // carrying no information about the actual load distribution.
+  std::vector<int> assigned_load(num_fog, 0);
 
   for (const auto &reading : readings) {
     if (reading.sensor_id >= static_cast<int>(sensors.size()))
@@ -161,6 +180,7 @@ EpochMetrics DESEngine::runEpoch(
       // Sensor-level drop: simulates network congestion / sensor issues
       if (drop_dist(rng) >= sensor_drop_rate) {
         fog_nodes[fog_id].submitReading(qr);
+        assigned_load[fog_id]++;
       }
     }
   }
@@ -461,18 +481,21 @@ EpochMetrics DESEngine::runEpoch(
   metrics.queue_utilization = total_queue_util / num_fog;
   metrics.recovery_frequency = recovery_count;
 
-  // Compute workload imbalance (I_W) using node_load / total_load
+  // Compute workload imbalance (I_W) using node_load / total_load.
+  // Load is the per-epoch ASSIGNED reading count captured at submission time
+  // (see assigned_load above) — the residual queue size is always zero here
+  // because aggregation has already drained the queues, which made this
+  // metric a constant 1/num_fog artifact rather than a measurement.
   double total_w = 0.0;
   for (int f = 0; f < config.num_fog_nodes; ++f) {
-    total_w += static_cast<double>(fog_nodes[f].currentQueueSize());
+    total_w += static_cast<double>(assigned_load[f]);
   }
   double w_bar = 1.0 / config.num_fog_nodes;
   double var_sum = 0.0;
   for (int f = 0; f < config.num_fog_nodes; ++f) {
-    double w_i =
-        (total_w > 0)
-            ? (static_cast<double>(fog_nodes[f].currentQueueSize()) / total_w)
-            : 0.0;
+    double w_i = (total_w > 0)
+                     ? (static_cast<double>(assigned_load[f]) / total_w)
+                     : 0.0;
     double diff = w_i - w_bar;
     var_sum += diff * diff;
   }

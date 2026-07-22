@@ -106,3 +106,27 @@ OPEN ITEMS (need a decision)
   degenerate — always exactly 1/num_fog_nodes rather than a real measured
   imbalance — making it and convergence_time_epochs not meaningful as
   currently computed. Needs a fix decision before the next Exp2 run.
+
+POST-MERGE FIXES (2026-07-22)
+- A merge committed literal git conflict markers into run_exp1.sh and
+  run_exp2.sh — both scripts were unrunnable. No other files affected; all
+  C++ fixes survived the merge.
+- run_exp1.sh: resolved to the instrumented run_exp_common.sh version.
+- run_exp2.sh: MERGED both conflict sides — README defines Exp2 as a
+  4-scheme comparison, so PLOSHA (instrumented stage) + the 3 baseline
+  stages (FT-Workflow, FedDQN, FT-Serverless) now run in one script/log,
+  with a verify step for each baseline's results.csv.
+- workload_imbalance FIXED: now computed from per-epoch ASSIGNED readings
+  (counted at submission), not from queues that aggregation already
+  drained. Consequence: with no failures (Exp2), static round-robin gives
+  a true imbalance of ~0.000 — honest, but whether the paper wants a
+  static-assignment story is a design decision.
+- Failure injection FIXED: per-node Bernoulli(rate) trials replace the
+  ceil(rate x num_fog) count (which biased realized failures by up to
+  5.4pp). Exp1/Exp3 results must be regenerated under the new model.
+- NOT done (README constraints): generate_plots.py untouched (error bars
+  still pending approval); README.md untouched (its command examples
+  contain a corrupted dataset path — flagged, not edited).
+- PENDING on AWS box (currently off): compile-verify the two C++ fixes
+  (no local compiler), move stale exp2_..._native/ aside, rerun Exp1 and
+  Exp2.

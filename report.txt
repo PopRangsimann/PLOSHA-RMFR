@@ -341,3 +341,71 @@ bars communicating its magnitude honestly rather than hiding or smoothing it).
      Elastic IP is attached) and re-run run_exp2.sh from scratch — check the
      newest file under logs/ first in case a partial results.csv is worth
      comparing against.
+
+
+===============================================================================
+9. POST-MERGE FIXES (2026-07-22, after commits ff7433b/d8ee834/b949936)
+===============================================================================
+
+A merge left GIT CONFLICT MARKERS (<<<<<<< / ======= / >>>>>>>) COMMITTED
+inside run_exp1.sh and run_exp2.sh — both scripts were unrunnable (bash dies
+on line 2). Repo-wide sweep confirmed no other file was affected, and the
+session's C++ source fixes (sections 3-5) all survived the merge intact.
+
+Fixes applied locally (AWS box was off; compile verification still pending):
+
+  a) run_exp1.sh — resolved to the instrumented run_exp_common.sh version
+     (the other side was the superseded inline script). Syntax-checked,
+     LF endings, executable, smoke-tested through preflight.
+
+  b) run_exp2.sh — MERGED both sides rather than picking one: README's
+     Experiment Definitions table specifies Exp2 as a FOUR-scheme comparison
+     (PLOSHA + FedDQN + FT-Workflow + FT-Serverless), so the baseline stages
+     from the other side were kept. PLOSHA runs through run_exp_common.sh
+     (preflight/provenance/epoch-records/verify); the three baselines run
+     via a new extra_stages() hook in run_exp_common.sh so all output lands
+     in one log. Baseline invocations kept behaviorally identical (including
+     ft_serverless's --sensors 12600 --seed 12345); only path handling was
+     made cwd-independent. Added a baseline-verify step (each baseline
+     results.csv must exist with >=1 data row).
+
+  c) workload_imbalance metric fix (des_engine.cpp, runEpoch): the metric
+     read fog_nodes[f].currentQueueSize() AFTER aggregation had drained all
+     queues, so total load was always zero and the formula degenerated to
+     exactly 1/num_fog every epoch (std=0 across 900 samples — confirmed in
+     the stale exp2 CSV, a perfect 1/F hyperbola). It also made
+     convergence_time_epochs a pure arithmetic artifact (1/F < 0.1 iff
+     F > 10: rows read 18,18,0,0,0,0,0,0,0,0). Fixed by counting per-node
+     ASSIGNED readings at submission time (assigned_load[fog_id]++ next to
+     submitReading) and computing the same imbalance formula over that.
+     HONEST CONSEQUENCE: in Exp2 (failure_rate=0, no drops) the static
+     round-robin assignment is perfectly uniform, so PLOSHA's imbalance will
+     now read ~0.000 and convergence will be instant at every fog count.
+     That is the true behavior of a static assignment — whether the paper
+     should instead model dynamic re-routing is a DESIGN question, not
+     something to fake in the metric.
+
+  d) Failure-injection fix (des_engine.cpp, runEpoch): replaced
+     num_failures = ceil(weibull_rate * num_fog) — the count-quantized model
+     whose bias was measured at +0.7pp (5 nodes) to -5.4pp (50 nodes) — with
+     an independent Bernoulli(rate) trial per node, keeping the "at least
+     one node survives" invariant. Failure realizations change under the
+     same seed, so failure-dependent results (Exp1 ablation, Exp3 sweep)
+     must be regenerated before publication.
+
+  e) README constraints honored: plots/generate_plots.py NOT touched (README
+     forbids modification without explicit approval — the error-bar
+     recommendation from section 8 therefore remains pending approval);
+     README.md itself NOT modified (its own no-modify rule), although its
+     command examples contain a corrupted literal path
+     ("plosha_dataset.csv (Kaggle Smart Manufacturing Dataset with Jitter)")
+     that will not paste-execute — flagged here instead of edited.
+
+  STILL PENDING ON THE AWS BOX (off at time of writing):
+    - make clean && make to compile-verify fixes (c) and (d) — no local
+      compiler exists, so these are syntax-reviewed but NOT compiled yet.
+    - Move stale exp2_scheduling_efficiency_native/ aside (same trap that
+      nearly plotted stale Exp1 data; exp1's rename was done on the box
+      earlier and should be re-verified after restart).
+    - Rerun Experiment 1 (failure model changed by (d)) and Experiment 2
+      (first complete run, now 4 schemes).

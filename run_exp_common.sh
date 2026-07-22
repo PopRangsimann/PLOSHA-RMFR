@@ -10,6 +10,13 @@
 # Environment overrides:
 #   EPOCHS=<n>   epoch count            (default 30)
 #   REBUILD=1    force `make clean`     (default incremental)
+#   SKIP_BUILD=1 reuse the existing plosha_rmfr binary, do NOT run make. Use
+#                when launching two experiments in parallel against one
+#                pre-built binary: a second `make` relinking the shared
+#                binary while the first run is executing it fails with
+#                ETXTBSY. Build once beforehand, then pass SKIP_BUILD=1 to
+#                both runners. (Baseline schemes in run_exp2's extra_stages
+#                build their own separate binaries and are unaffected.)
 #   DEBUG=1      trace every command via `set -x`
 
 set -euo pipefail
@@ -64,11 +71,17 @@ build() {
   echo ""
   echo "-- build --"
   cd "$SRC_DIR"
-  [ "$REBUILD" = "1" ] && make clean
-  make
+  if [ "${SKIP_BUILD:-0}" = "1" ]; then
+    [ -x ./plosha_rmfr ] || fail "SKIP_BUILD=1 but ./plosha_rmfr is missing — build it first (make)"
+    echo "   (SKIP_BUILD=1) reusing existing binary, no make"
+  else
+    [ "$REBUILD" = "1" ] && make clean
+    make
+  fi
 
   # A macOS arm64 build committed into the tree cannot run here; fail loudly
-  # rather than with a confusing "cannot execute binary file".
+  # rather than with a confusing "cannot execute binary file". Runs in both
+  # build and skip-build paths, so a stale/wrong binary is caught either way.
   if command -v file >/dev/null 2>&1; then
     if ! file ./plosha_rmfr | grep -q 'ELF 64-bit.*x86-64'; then
       fail "plosha_rmfr is not a Linux x86-64 ELF: $(file -b ./plosha_rmfr)"
@@ -119,6 +132,12 @@ main() {
   build
   execute
   verify
+  # Extension point: if the sourcing script defines extra_stages() (e.g.
+  # run_exp2.sh's baseline schemes), run it here so its output lands in the
+  # same tee'd log as the PLOSHA stage.
+  if declare -F extra_stages >/dev/null; then
+    extra_stages
+  fi
   echo ""
   echo "$EXP_NAME completed."
 }
