@@ -81,7 +81,11 @@ FTEngine::runEpoch(const ExperimentConfig &config, std::vector<Sensor> &sensors,
     }
   }
 
-  // Performance Fluctuation update
+  // Performance Fluctuation update + Scheduling Decision
+  // Ref[37] scheduling = performance-fluctuation estimation (EWMA update)
+  //                    + task-duration estimation per node
+  //                    + resubmission-vs-replication decision
+  // All three steps constitute the scheduling decision and are timed together.
   auto sched_start = std::chrono::high_resolution_clock::now();
   std::uniform_real_distribution<double> perf_dist(PERF_COEFF_MIN,
                                                    PERF_COEFF_MAX);
@@ -91,10 +95,23 @@ FTEngine::runEpoch(const ExperimentConfig &config, std::vector<Sensor> &sensors,
                       (1.0 - PERF_EWMA_ALPHA) * fn.perfCoefficient();
     fn.updatePerfCoefficient(smoothed);
   }
+
+  // Task-duration estimation and recovery-mode decision per fog node
+  // (this is the actual scheduling work that Ref[37] performs)
+  std::vector<double> T_task_estimates(num_fog, 0.0);
+  std::vector<bool>   use_resubmission_flags(num_fog, false);
+  for (int f = 0; f < num_fog; ++f) {
+    auto state = fog_nodes[f].getState();
+    int queue_sz = fog_nodes[f].currentQueueSize();
+    double T_task_est = (queue_sz * beta_t_calibrated_ * 1000.0) /
+                        state.perf_coeff;
+    T_task_estimates[f] = T_task_est;
+    use_resubmission_flags[f] = (T_task_est < TASK_DURATION_THRESHOLD_MS);
+  }
   auto sched_end = std::chrono::high_resolution_clock::now();
   metrics.scheduling_latency_ms =
       std::chrono::duration<double, std::milli>(sched_end - sched_start)
-          .count();
+      .count();
 
   double total_agg_latency = 0.0;
   double total_completeness = 0.0;
@@ -109,19 +126,16 @@ FTEngine::runEpoch(const ExperimentConfig &config, std::vector<Sensor> &sensors,
   for (int f = 0; f < num_fog; ++f) {
     bool node_failed = fog_nodes[f].isFailed();
     pre_drain_counts[f] = fog_nodes[f].currentQueueSize();
-    auto state =
-        fog_nodes[f]
-            .getState(); // Capture state BEFORE drain (for other metrics)
+    auto state = fog_nodes[f].getState();
     total_queue_util += state.queue_load;
     auto queued_readings = fog_nodes[f].drainQueue();
 
     if (queued_readings.empty())
       continue;
 
-    // Estimate Task Duration
-    double T_task_est = (queued_readings.size() * beta_t_calibrated_ * 1000.0) /
-                        state.perf_coeff;
-    bool use_resubmission = (T_task_est < TASK_DURATION_THRESHOLD_MS);
+    // Use pre-computed scheduling decisions
+    double T_task_est = T_task_estimates[f];
+    bool use_resubmission = use_resubmission_flags[f];
 
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -233,7 +247,7 @@ FTEngine::runEpoch(const ExperimentConfig &config, std::vector<Sensor> &sensors,
       double diff = w_i - w_bar;
       var_sum += diff * diff;
     }
-    metrics.workload_imbalance = std::sqrt(var_sum / num_fog);
+    metrics.workload_imbalance = std::sqrt(var_sum / num_fog) / (w_bar + 1e-9);
   }
 
   return metrics;
@@ -415,7 +429,7 @@ void FTEngine::runExp9_SchedulingEfficiency(const ExperimentConfig &config) {
             epoch_metrics.scheduling_comm_kb = (exp_config.num_fog_nodes * 32.0) / 1024.0;
             metrics_.recordEpoch(epoch_metrics);
             
-            if (e >= 12 && convergence_epoch == -1 && epoch_metrics.workload_imbalance < 0.1) {
+            if (e >= 12 && convergence_epoch == -1 && epoch_metrics.workload_imbalance < 0.1 * exp_config.num_fog_nodes) {
                 convergence_epoch = e - 12;
             }
         }

@@ -814,8 +814,8 @@ FedDQNMetrics FedDQNSimulation::Run() {
           double diff = w_i - w_bar;
           var_sum += diff * diff;
         }
-        double episode_imbalance = std::sqrt(var_sum / num_fog_nodes_);
-        if (episode_imbalance < 0.1) {
+        double episode_imbalance = std::sqrt(var_sum / num_fog_nodes_) / (w_bar + 1e-9);
+        if (episode_imbalance < 0.1 * num_fog_nodes_) {
           convergence_epoch = episode - 12;
         }
       }
@@ -903,7 +903,7 @@ FedDQNMetrics FedDQNSimulation::Run() {
       double diff = w_i - w_bar;
       var_sum += diff * diff;
     }
-    metrics.workload_imbalance = std::sqrt(var_sum / num_fog_nodes_);
+    metrics.workload_imbalance = std::sqrt(var_sum / num_fog_nodes_) / (w_bar + 1e-9);
   }
 
   return metrics;

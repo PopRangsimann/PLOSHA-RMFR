@@ -44,20 +44,20 @@ if [ ! -f "$HOME/.config/gramine/enclave-key.pem" ]; then
   gramine-sgx-gen-private-key
 fi
 
-echo "  -> Signing SGX enclave..."
-gramine-sgx-sign --manifest plosha_rmfr.manifest --output plosha_rmfr.manifest.sgx
-
-echo "  -> Executing via Gramine-SGX (all experiments)..."
-mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp1_ablation_aggregation"
-mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp2_scheduling_efficiency"
-mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp3_failure_rate"
-mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp3_workload_intensity"
-mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp4_loss_exposure"
-mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp5_recovery_comm"
-mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp6_aflto_ablation"
-gramine-sgx plosha_rmfr --experiment all --skip-native-exp8 --epochs 30 --dataset /dataset/plosha_dataset.csv --output /output
-echo "✔ PLOSHA-RMFR (SGX) completed."
-echo ""
+# echo "  -> Signing SGX enclave..."
+# gramine-sgx-sign --manifest plosha_rmfr.manifest --output plosha_rmfr.manifest.sgx
+# 
+# echo "  -> Executing via Gramine-SGX (all experiments)..."
+# mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp1_ablation_aggregation"
+# mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp2_scheduling_efficiency"
+# mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp3_failure_rate"
+# mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp3_workload_intensity"
+# mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp4_loss_exposure"
+# mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp5_recovery_comm"
+# mkdir -p "$ROOT_DIR/schemes/plosha_rmfr/exp6_aflto_ablation"
+# gramine-sgx plosha_rmfr --experiment all --skip-native-exp8 --epochs 30 --dataset /dataset/plosha_dataset.csv --output /output
+# echo "✔ PLOSHA-RMFR (SGX) completed."
+# echo ""
 
 # ---------------------------------------------------------
 # 2. Fault-Tolerant Workflow (Ref[37])
@@ -76,14 +76,14 @@ echo ""
 echo "[3/5] Running Robust IIoT (Ref[24])..."
 cd "$ROOT_DIR/schemes/robust_iiot/src"
 make clean && make
-echo "  -> Running Exp 1 (Sensor Scalability)..."
-mkdir -p ../exp1_sensor_scalability
-./exp1_sensor_scalability
-echo "  -> Running Exp 3 (Workload Intensity)..."
-mkdir -p ../exp3_workload_intensity
-./exp3_workload_intensity
+# echo "  -> Running Exp 1 (Sensor Scalability)..."
+# mkdir -p ../exp1_sensor_scalability
+# ./exp1_sensor_scalability
+# echo "  -> Running Exp 3 (Workload Intensity)..."
+# mkdir -p ../exp3_workload_intensity
+# ./exp3_workload_intensity
 echo "  -> Running Exp 4 (Loss Exposure)..."
-mkdir -p ../exp5_loss_exposure
+mkdir -p ../exp4_loss_exposure
 ./exp5_loss_exposure
 echo "✔ Robust IIoT completed."
 echo ""
@@ -94,15 +94,15 @@ echo ""
 echo "[4/5] Running FedDQN (Ref[22])..."
 cd "$ROOT_DIR/schemes/fed_dqn/src"
 make clean && make
-echo "  -> Running Exp 1 (Sensor Scalability)..."
-mkdir -p ../exp1_sensor_scalability
-./exp1_sensor_scalability
-echo "  -> Running Exp 2 (Fog Scalability)..."
-mkdir -p ../exp2_fog_scalability
-./exp2_fog_scalability
-echo "  -> Running Exp 3 (Workload Intensity)..."
-mkdir -p ../exp3_workload_intensity
-./exp3_workload_intensity
+# echo "  -> Running Exp 1 (Sensor Scalability)..."
+# mkdir -p ../exp1_sensor_scalability
+# ./exp1_sensor_scalability
+# echo "  -> Running Exp 2 (Fog Scalability)..."
+# mkdir -p ../exp2_fog_scalability
+# ./exp2_fog_scalability
+# echo "  -> Running Exp 3 (Workload Intensity)..."
+# mkdir -p ../exp3_workload_intensity
+# ./exp3_workload_intensity
 echo "  -> Running Exp 3 (Failure Rate)..."
 mkdir -p ../exp3_failure_rate
 ./exp4_failure_rate
@@ -143,26 +143,26 @@ run_avg() {
     "$(echo "$sum3 / $NUM_SEEDS" | bc -l)"
 }
 
-echo "  -> Running Exp 1 (Sensor Scalability)..."
-mkdir -p ../exp1_sensor_scalability
-echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp1_sensor_scalability/results.csv
-for v in 500 1000 1500 2000 2500 3000 3500 4000 4500 5000; do
-  run_avg 1 $v --sensors $v >> ../exp1_sensor_scalability/results.csv
-done
+# echo "  -> Running Exp 1 (Sensor Scalability)..."
+# mkdir -p ../exp1_sensor_scalability
+# echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp1_sensor_scalability/results.csv
+# for v in 500 1000 1500 2000 2500 3000 3500 4000 4500 5000; do
+#   run_avg 1 $v --sensors $v >> ../exp1_sensor_scalability/results.csv
+# done
 
-echo "  -> Running Exp 2 (Fog Scalability)..."
-mkdir -p ../exp2_fog_scalability
-echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp2_fog_scalability/results.csv
-for v in 5 10 15 20 25 30 35 40 45 50; do
-  run_avg 2 $v --cloudlets $v >> ../exp2_fog_scalability/results.csv
-done
+# echo "  -> Running Exp 2 (Fog Scalability)..."
+# mkdir -p ../exp2_fog_scalability
+# echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp2_fog_scalability/results.csv
+# for v in 5 10 15 20 25 30 35 40 45 50; do
+#   run_avg 2 $v --cloudlets $v >> ../exp2_fog_scalability/results.csv
+# done
 
-echo "  -> Running Exp 3 (Workload Intensity)..."
-mkdir -p ../exp3_workload_intensity
-echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp3_workload_intensity/results.csv
-for v in 1 2 3 4 5 6 7 8 9 10; do
-  run_avg 3 $v >> ../exp3_workload_intensity/results.csv
-done
+# echo "  -> Running Exp 3 (Workload Intensity)..."
+# mkdir -p ../exp3_workload_intensity
+# echo "variable_value,primary_metric,secondary_metric_1,secondary_metric_2" > ../exp3_workload_intensity/results.csv
+# for v in 1 2 3 4 5 6 7 8 9 10; do
+#   run_avg 3 $v >> ../exp3_workload_intensity/results.csv
+# done
 
 echo "  -> Running Exp 3 (Failure Rate)..."
 mkdir -p ../exp3_failure_rate

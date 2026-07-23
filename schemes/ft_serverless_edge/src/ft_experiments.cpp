@@ -400,7 +400,7 @@ SimResult FTServerlessEdgeSim::runExp9_SchedulingEfficiency() {
             double diff = w_i - w_bar;
             var_sum += diff * diff;
           }
-          total_imbalance_accum += std::sqrt(var_sum / n_cl);
+          total_imbalance_accum += std::sqrt(var_sum / n_cl) / (w_bar + 1e-9);
       }
       overall_sched_ms += total_sched_ms_accum / num_epochs;
       overall_imbalance += total_imbalance_accum / num_epochs;

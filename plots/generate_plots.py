@@ -165,8 +165,7 @@ def main():
                     x_col='micro_slots', y_col='loss_exposure_fraction',
                     x_label='Number of Micro-slots', y_label='Loss Exposure Fraction',
                     output_filename='graph4_loss_exposure.png',
-                    legend_loc='upper right',
-                    exclude_schemes=['ft_serverless_edge'])
+                    legend_loc='upper right')
 
     # Graph 5: Recovery Communication
     plot_experiment('exp5_recovery_comm',
@@ -379,8 +378,9 @@ def plot_exp2_scheduling_efficiency():
         print("No data found for experiment exp2_scheduling_efficiency")
         return
 
-    fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5), dpi=300)
 
+    # --- Subplot (a): Scheduling Latency ---
     y_col = 'scheduling_latency_ms'
     y_label = 'Scheduling Latency (ms)'
 
@@ -388,23 +388,50 @@ def plot_exp2_scheduling_efficiency():
         if y_col not in df.columns:
             continue
         info = exp2_schemes[scheme_id]
-        ax.plot(df['num_fog_nodes'], df[y_col],
+        ax1.plot(df['num_fog_nodes'], df[y_col],
                 label=info['label'], color=info['color'],
                 marker=info['marker'], linewidth=2.5, markersize=8,
                 linestyle=info.get('linestyle', '-'),
                 zorder=5 if 'plosha' in scheme_id else 3)
 
-    ax.set_xlabel('Number of Fog Nodes')
-    ax.set_ylabel(y_label)
-    ax.set_yscale('log')
-    setup_axes(ax)
+    ax1.set_xlabel('Number of Fog Nodes')
+    ax1.set_ylabel(y_label)
+    ax1.set_yscale('log')
+    ax1.set_title('(a) Scheduling Latency', fontsize=12, pad=8)
+    setup_axes(ax1)
 
-    # Legend — Refs first, then Ours
-    handles, labels = ax.get_legend_handles_labels()
-    sorted_pairs = sorted(zip(handles, labels),
+    handles1, labels1 = ax1.get_legend_handles_labels()
+    sorted_pairs1 = sorted(zip(handles1, labels1),
                           key=lambda p: (1 if 'Ours' in p[1] else 0, p[1]))
-    handles_sorted, labels_sorted = zip(*sorted_pairs)
-    ax.legend(handles_sorted, labels_sorted, loc='upper left', frameon=True)
+    handles_sorted1, labels_sorted1 = zip(*sorted_pairs1)
+    ax1.legend(handles_sorted1, labels_sorted1, loc='upper left', frameon=True)
+
+    # --- Subplot (b): Workload Imbalance ---
+    y_col2 = 'workload_imbalance'
+    y_label2 = 'Workload Imbalance ($I_W$)'
+
+    for scheme_id, df in data.items():
+        if y_col2 not in df.columns:
+            continue
+        info = exp2_schemes[scheme_id]
+        ax2.plot(df['num_fog_nodes'], df[y_col2],
+                label=info['label'], color=info['color'],
+                marker=info['marker'], linewidth=2.5, markersize=8,
+                linestyle=info.get('linestyle', '-'),
+                zorder=5 if 'plosha' in scheme_id else 3)
+
+    ax2.set_xlabel('Number of Fog Nodes')
+    ax2.set_ylabel(y_label2)
+    ax2.set_yscale('log')
+    ax2.set_title('(b) Workload Imbalance', fontsize=12, pad=8)
+    setup_axes(ax2)
+
+    handles2, labels2 = ax2.get_legend_handles_labels()
+    sorted_pairs2 = sorted(zip(handles2, labels2),
+                          key=lambda p: (1 if 'Ours' in p[1] else 0, p[1]))
+    handles_sorted2, labels_sorted2 = zip(*sorted_pairs2)
+    ax2.legend(handles_sorted2, labels_sorted2, loc='upper right', frameon=True)
+
     fig.tight_layout()
 
     out_path = OUTPUT_DIR / 'graph2_scheduling_efficiency.png'

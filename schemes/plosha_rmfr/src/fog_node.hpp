@@ -62,6 +62,7 @@ public:
     const std::vector<int>& assignedSensors() const { return assigned_sensors_; }
     int queueCapacity() const { return queue_capacity_; }
     int currentQueueSize() const;
+    double reliability() const { return reliability_; }
 
 private:
     int fog_id_;

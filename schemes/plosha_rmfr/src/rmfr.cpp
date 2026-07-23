@@ -59,7 +59,7 @@ int RMFREngine::selectRecoveryCandidate(
       continue;
 
     double utility = ALPHA_C * predictions[j].capacity +
-                     ALPHA_R * fog_nodes[j].getState().reliability +
+                     ALPHA_R * fog_nodes[j].reliability() +
                      ALPHA_K * (1.0 - predictions[j].risk);
 
     if (utility > best_utility) {

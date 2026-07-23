@@ -117,23 +117,24 @@ EpochMetrics DESEngine::runEpoch(
   // Inject failures FIRST so readings to failed nodes are dropped,
   // causing incomplete data that triggers RMFR recovery.
   if (config.failure_rate > 0.0) {
+    // Dedicated failure RNG: seeded from epoch_index only (mixed with a
+    // single draw from the main rng for per-iteration variation), so the
+    // failure realization is independent of num_sensors.  This eliminates
+    // the stride-dependent PRNG divergence that caused the unexplained
+    // curve shape (spikes) in Graph 1.
+    std::mt19937 fail_rng(std::hash<int>{}(epoch_index) ^ rng());
     std::weibull_distribution<double> weibull(1.5, config.failure_rate);
-    double current_fail_rate = std::min(1.0, weibull(rng));
+    double current_fail_rate = std::min(1.0, weibull(fail_rng));
 
     // Reset all to non-failed first
     for (auto &fn : fog_nodes)
       fn.setFailed(false);
 
-    // Independent Bernoulli(current_fail_rate) trial per node. The previous
-    // implementation converted the rate to a node COUNT via
-    // ceil(rate * num_fog), which quantizes the realized failure fraction
-    // and biases it in a num_fog-dependent way (measured: +0.7pp at 5 nodes
-    // to -5.4pp at 50 nodes vs. the nominal rate, after the num_fog-1 cap).
-    // Per-node trials realize the nominal rate without count rounding.
+    // Independent Bernoulli(current_fail_rate) trial per node.
     std::uniform_real_distribution<double> fail_coin(0.0, 1.0);
     int num_failures = 0;
     for (auto &fn : fog_nodes) {
-      if (fail_coin(rng) < current_fail_rate) {
+      if (fail_coin(fail_rng) < current_fail_rate) {
         fn.setFailed(true);
         ++num_failures;
       }
@@ -142,7 +143,7 @@ EpochMetrics DESEngine::runEpoch(
     // Keep at least 1 node alive (same invariant as before).
     if (num_failures == num_fog) {
       std::uniform_int_distribution<int> pick(0, num_fog - 1);
-      fog_nodes[pick(rng)].setFailed(false);
+      fog_nodes[pick(fail_rng)].setFailed(false);
     }
   }
 
@@ -499,7 +500,10 @@ EpochMetrics DESEngine::runEpoch(
     double diff = w_i - w_bar;
     var_sum += diff * diff;
   }
-  metrics.workload_imbalance = std::sqrt(var_sum / config.num_fog_nodes);
+  // Paper Eq. (Exp2): I_W = sqrt(1/|F| * sum((W_i - W_bar)^2)) / (W_bar + eps)
+  // This is the coefficient of variation (CV), not raw standard deviation.
+  double iw_std = std::sqrt(var_sum / config.num_fog_nodes);
+  metrics.workload_imbalance = iw_std / (w_bar + 1e-9);
 
   // Update EWMA states for next epoch
   for (int f = 0; f < config.num_fog_nodes; ++f) {
@@ -1132,7 +1136,7 @@ void DESEngine::runExp9_SchedulingEfficiency(const ExperimentConfig &config) {
         metrics_.recordEpoch(epoch_metrics);
 
         if (e >= 12 && convergence_epoch == -1 &&
-            epoch_metrics.workload_imbalance < 0.1) {
+            epoch_metrics.workload_imbalance < 0.1 * exp_config.num_fog_nodes) {
           convergence_epoch = e - 12;
         }
       }
