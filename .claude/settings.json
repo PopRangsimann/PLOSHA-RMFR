@@ -45,7 +45,8 @@
       "Read(//tmp/**)",
       "Bash(python3 -c \"import pandas, matplotlib; print\\('OK', pandas.__version__, matplotlib.__version__\\)\")",
       "Bash(python -c \"import pandas, matplotlib; print\\('OK', pandas.__version__, matplotlib.__version__\\)\")",
-      "Bash(ssh -i \"c:/Users/User/Desktop/PLOSHA-RMFR/plosha_key.pem\" ubuntu@52.54.142.112 \"cd ~/PLOSHA-RMFR/schemes && find . -name 'results.csv' -newer ~/PLOSHA-RMFR/run_benchmark_native.sh 2>/dev/null | sort\")"
+      "Bash(ssh -i \"c:/Users/User/Desktop/PLOSHA-RMFR/plosha_key.pem\" ubuntu@52.54.142.112 \"cd ~/PLOSHA-RMFR/schemes && find . -name 'results.csv' -newer ~/PLOSHA-RMFR/run_benchmark_native.sh 2>/dev/null | sort\")",
+      "Bash(python3 generate_plots.py)"
     ]
   }
 }

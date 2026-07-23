@@ -165,7 +165,8 @@ def main():
                     x_col='micro_slots', y_col='loss_exposure_fraction',
                     x_label='Number of Micro-slots', y_label='Loss Exposure Fraction',
                     output_filename='graph4_loss_exposure.png',
-                    legend_loc='upper right')
+                    legend_loc='upper right',
+                    exclude_schemes=['ft_serverless_edge'])
 
     # Graph 5: Recovery Communication
     plot_experiment('exp5_recovery_comm',
