@@ -354,6 +354,9 @@ void FedDQNSimulation::Configure(int num_fog_nodes, int num_vms_per_node,
     fog_nodes_[i].total_makespan = 0;
     fog_nodes_[i].max_replay_size = 1000;
 
+    // Initialize real DQN network: Input[3] → Dense[128] → ReLU → Dense[64] → ReLU → Dense[num_vms]
+    fog_nodes_[i].dqn.init(3, num_vms_per_node, rng_);
+
     fog_nodes_[i].vms.resize(num_vms_per_node);
     for (int v = 0; v < num_vms_per_node; v++) {
       fog_nodes_[i].vms[v].id = v;
