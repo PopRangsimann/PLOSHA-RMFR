@@ -13,6 +13,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <functional>
+#include "dqn_network.hpp"
 
 // ============================================================================
 // Data structures for the FedDQN task scheduling simulation
@@ -78,7 +79,7 @@ struct QTable {
 struct FogNode {
     int id;
     std::vector<VirtualMachine> vms;
-    QTable q_table;                       // Local Q-table
+    DQNNetwork dqn;                       // Real DNN agent
     std::deque<Experience> replay_buffer; // Experience replay
     int max_replay_size;
 
@@ -108,6 +109,7 @@ struct FedDQNMetrics {
     double recovery_latency_ms;     // Simulated recovery latency (VM reset + reschedule)
     double scheduling_latency_ms;   // Wall-clock time for DQN action selection
     double workload_imbalance;      // I_W = sqrt(1/|F| * sum((W_i - W_bar)^2))
+    double convergence_time_epochs; // Episodes needed to converge after burst
 };
 
 // ============================================================================

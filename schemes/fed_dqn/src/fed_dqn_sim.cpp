@@ -439,20 +439,19 @@ void FedDQNSimulation::TrainFromReplay(FogNode &node) {
   if ((int)node.replay_buffer.size() < batch_size_)
     return;
 
-  // Sample a batch
+  // Sample a mini-batch and train via real backpropagation
   std::uniform_int_distribution<int> dist(0,
                                           (int)node.replay_buffer.size() - 1);
   for (int b = 0; b < batch_size_; b++) {
     const Experience &exp = node.replay_buffer[dist(rng_)];
 
-    // Target: r + γ * max_a' Q(s', a')
-    auto &next_q = node.q_table.GetQ(exp.next_state, num_vms_per_node_);
+    // Target: r + γ * max_a' Q(s', a') using real DNN forward pass
+    auto next_q = node.dqn.forward(exp.next_state);
     double max_next_q = *std::max_element(next_q.begin(), next_q.end());
     double target = exp.reward + gamma_ * max_next_q;
 
-    // Update Q(s, a)
-    node.q_table.Update(exp.state, exp.action, target, alpha_,
-                        num_vms_per_node_);
+    // Train via backpropagation through 3-layer MLP
+    node.dqn.train(exp.state, exp.action, target, alpha_);
   }
 }
 
@@ -531,6 +530,12 @@ void FedDQNSimulation::RecoverFromFailure(int node_id, int &recovery_count,
       vm.task_queue.pop();
     vm.available_time = 0;
   }
+
+  // VM reset: proportional to number of VMs on the node
+  double vm_reset_cost =
+      static_cast<double>(node.vms.size()) * 0.5; // ms per VM
+  // Task rescheduling: each lost task must be re-dispatched to another node
+  double reschedule_cost = lost_tasks * 0.1; // ms per task (dispatch overhead)
 
   // DQN re-initialization: the failed node's learned network weights are lost
   // Cost proportional to number of neural network parameters
