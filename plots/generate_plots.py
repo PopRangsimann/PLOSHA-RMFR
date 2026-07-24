@@ -379,11 +379,11 @@ def plot_exp2_scheduling_efficiency():
         print("No data found for experiment exp2_scheduling_efficiency")
         return
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5), dpi=300)
-
-    # --- Subplot (a): Scheduling Latency ---
+    # --- Graph 2a: Scheduling Latency ---
     y_col = 'scheduling_latency_ms'
     y_label = 'Scheduling Latency (ms)'
+
+    fig1, ax1 = plt.subplots(figsize=(8, 5), dpi=300)
 
     for scheme_id, df in data.items():
         if y_col not in df.columns:
@@ -398,7 +398,6 @@ def plot_exp2_scheduling_efficiency():
     ax1.set_xlabel('Number of Fog Nodes')
     ax1.set_ylabel(y_label)
     ax1.set_yscale('log')
-    ax1.set_title('(a) Scheduling Latency', fontsize=12, pad=8)
     setup_axes(ax1)
 
     handles1, labels1 = ax1.get_legend_handles_labels()
@@ -407,9 +406,17 @@ def plot_exp2_scheduling_efficiency():
     handles_sorted1, labels_sorted1 = zip(*sorted_pairs1)
     ax1.legend(handles_sorted1, labels_sorted1, loc='upper left', frameon=True)
 
-    # --- Subplot (b): Workload Imbalance ---
+    fig1.tight_layout()
+    out_path_a = OUTPUT_DIR / 'graph2a_scheduling_latency.png'
+    fig1.savefig(out_path_a, bbox_inches='tight')
+    print(f"Generated {out_path_a}")
+    plt.close(fig1)
+
+    # --- Graph 2b: Workload Imbalance ---
     y_col2 = 'workload_imbalance'
     y_label2 = 'Workload Imbalance ($I_W$)'
+
+    fig2, ax2 = plt.subplots(figsize=(8, 5), dpi=300)
 
     for scheme_id, df in data.items():
         if y_col2 not in df.columns:
@@ -424,7 +431,6 @@ def plot_exp2_scheduling_efficiency():
     ax2.set_xlabel('Number of Fog Nodes')
     ax2.set_ylabel(y_label2)
     ax2.set_yscale('log')
-    ax2.set_title('(b) Workload Imbalance', fontsize=12, pad=8)
     setup_axes(ax2)
 
     handles2, labels2 = ax2.get_legend_handles_labels()
@@ -433,12 +439,11 @@ def plot_exp2_scheduling_efficiency():
     handles_sorted2, labels_sorted2 = zip(*sorted_pairs2)
     ax2.legend(handles_sorted2, labels_sorted2, loc='upper right', frameon=True)
 
-    fig.tight_layout()
-
-    out_path = OUTPUT_DIR / 'graph2_scheduling_efficiency.png'
-    fig.savefig(out_path, bbox_inches='tight')
-    print(f"Generated {out_path}")
-    plt.close(fig)
+    fig2.tight_layout()
+    out_path_b = OUTPUT_DIR / 'graph2b_workload_imbalance.png'
+    fig2.savefig(out_path_b, bbox_inches='tight')
+    print(f"Generated {out_path_b}")
+    plt.close(fig2)
 
 
 if __name__ == '__main__':
