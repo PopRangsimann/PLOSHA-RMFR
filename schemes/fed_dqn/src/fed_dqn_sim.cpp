@@ -405,17 +405,20 @@ std::vector<double> FedDQNSimulation::GetState(const FogNode &node,
 
 int FedDQNSimulation::SelectAction(const FogNode &node,
                                    const std::vector<double> &state) {
-  std::uniform_real_distribution<double> dist(0.0, 1.0);
+  // Always run the DNN forward pass to compute Q-values.
+  // In a real DQN deployment, inference always executes regardless of
+  // the exploration decision. The epsilon-greedy policy selects AFTER
+  // the network produces its output.
+  int best_action = const_cast<DQNNetwork &>(node.dqn).getBestAction(state);
 
+  std::uniform_real_distribution<double> dist(0.0, 1.0);
   if (dist(rng_) < epsilon_) {
-    // Explore: random VM
+    // Explore: override with random VM (but DNN inference already ran)
     std::uniform_int_distribution<int> vm_dist(0, num_vms_per_node_ - 1);
     return vm_dist(rng_);
   } else {
-    // Exploit: best Q-value
-    // Need a const_cast because GetBestAction modifies the table (lazy init)
-    return const_cast<QTable &>(node.q_table)
-        .GetBestAction(state, num_vms_per_node_);
+    // Exploit: use the DNN's recommendation
+    return best_action;
   }
 }
 
@@ -458,36 +461,33 @@ void FedDQNSimulation::TrainFromReplay(FogNode &node) {
 // ============================================================================
 
 void FedDQNSimulation::FederatedAggregate() {
-  // Collect all unique state keys across all nodes
-  std::map<uint64_t, std::vector<double>> global_q;
-  std::map<uint64_t, int> key_count;
+  if (fog_nodes_.empty())
+    return;
 
-  for (auto &node : fog_nodes_) {
-    for (auto &[key, q_vals] : node.q_table.table) {
-      if (global_q.find(key) == global_q.end()) {
-        global_q[key] = std::vector<double>(q_vals.size(), 0.0);
-      }
-      // Weighted by tasks assigned
-      double weight = std::max(1, node.tasks_assigned);
-      for (size_t a = 0; a < q_vals.size() && a < global_q[key].size(); a++) {
-        global_q[key][a] += q_vals[a] * weight;
-      }
-      key_count[key] += static_cast<int>(weight);
+  int num_params = fog_nodes_[0].dqn.numParameters();
+  std::vector<double> global_weights(num_params, 0.0);
+  double total_weight = 0.0;
+
+  for (const auto &node : fog_nodes_) {
+    double w = std::max(1, node.tasks_assigned);
+    std::vector<double> local_weights = node.dqn.getWeights();
+    
+    for (int p = 0; p < num_params; ++p) {
+      global_weights[p] += local_weights[p] * w;
     }
+    total_weight += w;
   }
 
-  // Average
-  for (auto &[key, q_vals] : global_q) {
-    int count = key_count[key];
-    if (count > 0) {
-      for (auto &v : q_vals)
-        v /= count;
+  // Normalize to get weighted average
+  if (total_weight > 0) {
+    for (int p = 0; p < num_params; ++p) {
+      global_weights[p] /= total_weight;
     }
   }
 
   // Distribute global model back to all nodes
   for (auto &node : fog_nodes_) {
-    node.q_table.table = global_q;
+    node.dqn.setWeights(global_weights);
   }
 }
 
@@ -532,17 +532,12 @@ void FedDQNSimulation::RecoverFromFailure(int node_id, int &recovery_count,
     vm.available_time = 0;
   }
 
-  // Recovery cost: VM reset overhead + task rescheduling + Q-table re-sync
-  // VM reset: proportional to number of VMs on the node
-  double vm_reset_cost =
-      static_cast<double>(node.vms.size()) * 0.5; // ms per VM
-  // Task rescheduling: each lost task must be re-dispatched to another node
-  double reschedule_cost = lost_tasks * 0.1; // ms per task (dispatch overhead)
-  // Q-table re-initialization: the failed node's learned policy is lost
-  double qtable_cost =
-      static_cast<double>(node.q_table.table.size()) * 0.01; // ms
+  // DQN re-initialization: the failed node's learned network weights are lost
+  // Cost proportional to number of neural network parameters
+  double dqn_cost =
+      static_cast<double>(node.dqn.numParameters()) * 0.0001; // ms
 
-  total_recovery_latency += vm_reset_cost + reschedule_cost + qtable_cost;
+  total_recovery_latency += vm_reset_cost + reschedule_cost + dqn_cost;
   recovery_count++;
 }
 
@@ -835,19 +830,16 @@ FedDQNMetrics FedDQNSimulation::Run() {
                             ? total_task_latency / completed_task_count
                             : 0;
 
-  // Federated synchronization overhead: each sync round transfers Q-tables
-  // across all nodes. Cost proportional to number of nodes × average Q-table
-  // entries (model parameters that must be aggregated).
-  double avg_qtable_size = 0;
-  for (const auto &node : fog_nodes_) {
-    avg_qtable_size += node.q_table.table.size();
-  }
-  avg_qtable_size /= std::max(1, num_fog_nodes_);
-  // Each sync round: all nodes send their Q-tables → aggregate → redistribute
-  // Overhead per round scales with (num_nodes * table_entries *
-  // entry_transfer_cost)
+  // Federated synchronization overhead: each sync round transfers DNN weights
+  // across all nodes. Cost proportional to number of nodes × neural network
+  // parameters that must be transmitted and aggregated.
+  double avg_params = (fog_nodes_.empty()) ? 0.0
+      : static_cast<double>(fog_nodes_[0].dqn.numParameters());
+  // Each sync round: all nodes send their weight matrices → aggregate → redistribute
+  // Overhead per round scales with (num_nodes * num_parameters *
+  // parameter_transfer_cost)
   double sync_overhead_per_round =
-      num_fog_nodes_ * avg_qtable_size * 0.001; // ms
+      num_fog_nodes_ * avg_params * 0.0001; // ms
   double total_sync_overhead = federated_sync_count * sync_overhead_per_round;
 
   metrics.aggregation_latency_ms = avg_response + (total_sync_overhead / ep);
